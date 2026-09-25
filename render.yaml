@@ -1,0 +1,35 @@
+# Publicacao no Render por "Blueprint": New > Blueprint > aponte para este
+# repositorio. O Render cria o site e o banco juntos e refaz o deploy a cada
+# push na branch main. Os segredos NAO ficam aqui: os campos marcados
+# "sync: false" sao digitados no painel do Render, uma vez.
+services:
+  - type: web
+    name: site-tripac
+    runtime: node
+    plan: starter
+    branch: main
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tripac-banco
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: NODE_ENV
+        value: production
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_SENHA
+        sync: false
+      - key: ADMIN_NOME
+        sync: false
+
+databases:
+  - name: tripac-banco
+    plan: basic-256mb
+    databaseName: tripac
+    user: tripac

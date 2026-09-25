@@ -1,0 +1,132 @@
+:root{
+  --marrom:#6E5446; --marrom-escuro:#5A4438; --dourado:#A07D3E;
+  --creme:#FAF7F2; --papel:#FFFFFF; --tinta:#2E2620; --cinza:#6F655D;
+  --linha:#E3DAD0; --verde:#2E6F40; --vermelho:#B3261E; --ambar:#8A6100;
+  --ui:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",sans-serif;
+  --sombra:0 1px 2px rgba(46,38,32,.06),0 8px 24px rgba(46,38,32,.07);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--creme);color:var(--tinta);font-family:var(--ui);
+     font-size:16px;line-height:1.5;overflow-x:hidden}
+img{max-width:100%}
+a{color:var(--marrom)}
+main{max-width:1060px;margin:0 auto;padding:16px;padding-bottom:48px}
+
+.topo{position:sticky;top:0;z-index:10;background:var(--marrom);color:#fff;
+      display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 16px}
+.topo .marca{color:#fff;text-decoration:none;font-weight:700;letter-spacing:.04em;font-size:18px}
+.topo .marca span{font-weight:400;opacity:.85;font-size:13px}
+.topo nav{display:flex;gap:14px;flex-wrap:wrap;margin-left:auto}
+.topo nav a{color:#fff;text-decoration:none;font-size:14px;font-weight:600;opacity:.92}
+.topo .quem{font-size:12px;opacity:.85;width:100%}
+footer{border-top:1px solid var(--linha);color:var(--cinza);font-size:13px;
+       padding:18px 16px 30px;text-align:center}
+
+.capa{background:var(--papel);border:1px solid var(--linha);border-radius:14px;
+      padding:26px 20px;box-shadow:var(--sombra);margin-bottom:22px}
+.capa h1{margin:0 0 6px;font-size:26px}
+.capa p{margin:0;color:var(--cinza)}
+.capa .acoes{margin-top:16px;display:flex;gap:10px;flex-wrap:wrap}
+.botao{display:inline-block;background:var(--marrom);color:#fff;text-decoration:none;
+       font-weight:600;border-radius:10px;padding:12px 18px}
+.botao.claro{background:var(--papel);color:var(--marrom);border:1px solid var(--marrom)}
+.titulo-secao{font-size:18px;margin:18px 0 10px}
+
+.faixa h1{font-size:23px;margin:6px 0 4px}
+.faixa p{margin:0 0 14px;color:var(--cinza)}
+.busca{display:flex;gap:8px;margin-bottom:16px}
+.busca input{flex:1;padding:12px;border:1px solid var(--linha);border-radius:10px;font-size:16px}
+.busca button{padding:12px 16px;border:1px solid var(--marrom);background:var(--marrom);
+              color:#fff;border-radius:10px;font-size:15px;cursor:pointer}
+
+.grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.cartao-imovel{display:block;background:var(--papel);border:1px solid var(--linha);
+  border-radius:12px;overflow:hidden;text-decoration:none;color:inherit;box-shadow:var(--sombra)}
+.cartao-imovel img,.cartao-imovel .sem-foto{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}
+.cartao-imovel .sem-foto{display:flex;align-items:center;justify-content:center;
+  background:var(--creme);color:var(--cinza);font-size:13px}
+.cartao-imovel .dados{padding:11px 13px 14px;display:grid;gap:3px}
+.cartao-imovel strong{font-size:15.5px}
+.cartao-imovel .onde,.cartao-imovel .tracos{font-size:13px;color:var(--cinza)}
+.cartao-imovel .preco{font-weight:700;color:var(--marrom);font-size:16px;margin-top:4px}
+.vazio{color:var(--cinza);padding:20px 4px}
+
+.imovel h1{font-size:23px;margin:6px 0 2px}
+.imovel .onde{color:var(--cinza);margin:0 0 6px;font-size:14px}
+.preco-grande{font-size:24px;font-weight:700;color:var(--marrom);margin:0 0 14px}
+.galeria{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-bottom:16px}
+.galeria img{border-radius:10px;aspect-ratio:4/3;object-fit:cover;width:100%}
+.descricao{white-space:pre-wrap}
+.ficha{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;background:var(--papel);
+  border:1px solid var(--linha);border-radius:12px;padding:14px;margin:16px 0}
+.ficha dt{color:var(--cinza);font-size:13px}
+.ficha dd{margin:0;font-weight:600}
+.visita{background:var(--papel);border:1px solid var(--linha);border-radius:12px;padding:16px}
+
+.formulario,.visita form,.entrar form{display:grid;gap:4px;max-width:520px}
+label{display:block;font-size:13px;font-weight:600;margin-top:10px}
+input,select,textarea{width:100%;font-family:var(--ui);font-size:16px;padding:11px 12px;
+  border:1px solid var(--linha);border-radius:9px;background:var(--papel);color:var(--tinta)}
+textarea{min-height:92px}
+button{font-family:var(--ui);font-size:15px;cursor:pointer;border-radius:10px;
+  border:1px solid var(--linha);background:var(--papel);color:var(--tinta);padding:12px 14px;min-height:46px}
+button.principal{background:var(--marrom);border-color:var(--marrom);color:#fff;font-weight:600;margin-top:14px}
+.erro{color:var(--vermelho);font-weight:600}
+.entrar{max-width:420px;margin:24px auto;background:var(--papel);border:1px solid var(--linha);
+  border-radius:14px;padding:22px;box-shadow:var(--sombra)}
+
+.acoes-topo{margin-bottom:14px}
+.lista .item{display:flex;gap:12px;align-items:center;background:var(--papel);
+  border:1px solid var(--linha);border-radius:12px;padding:10px;margin-bottom:10px;
+  text-decoration:none;color:inherit}
+.lista .item img,.lista .item .semfoto{width:66px;height:66px;border-radius:9px;object-fit:cover;
+  flex:0 0 auto;background:var(--creme);display:flex;align-items:center;justify-content:center;
+  font-size:11px;color:var(--cinza)}
+.lista .item .txt{min-width:0;display:grid;gap:2px}
+.lista .item .txt strong{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lista .item .txt span{font-size:12.5px;color:var(--cinza)}
+.chip{margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.04em;padding:3px 9px;
+  border-radius:999px;border:1px solid var(--linha);color:var(--cinza);flex:0 0 auto}
+.chip.PUBLICADO{border-color:var(--verde);color:var(--verde)}
+.chip.REVISAO,.chip.PAUSADO{border-color:var(--ambar);color:var(--ambar)}
+@media (max-width:520px){
+  .topo{gap:8px;padding:10px 12px}
+  .topo .marca{font-size:16px}
+  .topo .marca span{display:none}
+  .topo nav{gap:12px;margin-left:0;width:100%;order:3}
+  .topo nav a{font-size:13.5px}
+  .topo .quem{order:2;margin-left:auto;width:auto}
+}
+
+/* ---------------------------------------- captação (área interna) */
+.linha-estado{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.linha-estado .voltar{margin-left:auto;font-size:13px}
+.estado{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;
+        background:var(--linha);color:var(--cinza)}
+.estado.ok{background:#E3F1E7;color:var(--verde)}
+.estado.erro{background:#FBE7E6;color:var(--vermelho)}
+.estado.indo{background:#F6ECD8;color:var(--ambar)}
+.passos{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px}
+.passo{flex:0 0 auto;font-size:12px;font-weight:600;padding:8px 12px;border-radius:999px;
+       border:1px solid var(--linha);background:var(--papel);color:var(--cinza);min-height:0}
+.passo[aria-current="true"]{background:var(--marrom);border-color:var(--marrom);color:#fff}
+.passo.feito{border-color:var(--verde);color:var(--verde)}
+.cartao{background:var(--papel);border:1px solid var(--linha);border-radius:12px;
+        padding:14px;margin-bottom:12px;box-shadow:var(--sombra)}
+.cartao h2{font-size:16px;margin:0 0 2px}
+.cartao.interno{border-left:4px solid var(--vermelho)}
+.dica{font-size:12.5px;color:var(--cinza);margin:4px 0 0}
+.linha-botoes{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.linha-botoes button{flex:1 1 150px}
+.fotos{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:10px}
+.foto{border:1px solid var(--linha);border-radius:10px;overflow:hidden;background:var(--papel)}
+.foto.capa{outline:3px solid var(--dourado);outline-offset:-3px}
+.foto.enviando{opacity:.55}
+.foto img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}
+.foto .marca{display:block;font-size:11px;font-weight:700;color:var(--dourado);padding:4px 8px 0}
+.foto .acoes{display:flex;gap:2px;padding:5px}
+.foto .acoes button{flex:1;font-size:12px;padding:6px 2px;min-height:38px;border-radius:7px}
+.foto .acoes .perigo{color:var(--vermelho)}
+.barra-baixo{position:sticky;bottom:0;background:var(--creme);border-top:1px solid var(--linha);
+  display:flex;gap:8px;padding:10px 0;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
+.barra-baixo button{flex:1;margin-top:0}
