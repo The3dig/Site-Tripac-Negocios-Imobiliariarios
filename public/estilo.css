@@ -130,3 +130,5 @@ button.principal{background:var(--marrom);border-color:var(--marrom);color:#fff;
 .barra-baixo{position:sticky;bottom:0;background:var(--creme);border-top:1px solid var(--linha);
   display:flex;gap:8px;padding:10px 0;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
 .barra-baixo button{flex:1;margin-top:0}
+
+.ok-msg{color:var(--verde);font-weight:600}

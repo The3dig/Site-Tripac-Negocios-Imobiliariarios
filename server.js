@@ -79,6 +79,49 @@ function pareceImagem(buffer, tipo) {
   return false;
 }
 
+/**
+ * Registro do que importa: quem fez, o que fez, quando, e o antes/depois.
+ *
+ * Nao registra senha, nem o corpo inteiro de um formulario - so o que permite
+ * responder depois "quem tirou este imovel do ar?" e "quem mudou este preco?".
+ * Falha de registro NUNCA derruba a acao: o registro e testemunha, nao guarda.
+ */
+async function registrar(req, acao, objeto, antes, depois) {
+  const usuario = (req.session && req.session.usuario) || {};
+  try {
+    await pool.query(
+      `INSERT INTO auditoria (usuario_id, usuario_email, acao, objeto, antes, depois, ip)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [usuario.id || null, usuario.email || "", String(acao), String(objeto || ""),
+       antes ? JSON.stringify(antes) : null, depois ? JSON.stringify(depois) : null,
+       String(req.ip || "").slice(0, 60)]);
+  } catch (erro) {
+    console.error("auditoria falhou:", erro.message);
+  }
+}
+
+/**
+ * Limite simples por IP, na memoria do processo. Nao e defesa contra ataque
+ * grande - e o suficiente para spam de formulario publico e para forca bruta de
+ * senha, que e o que existe hoje.
+ */
+const contadores = new Map();
+function dentroDoLimite(chave, quantas, minutos) {
+  const agora = Date.now();
+  let registro = contadores.get(chave);
+  // A janela comeca no PRIMEIRO pedido, e nao no segundo: com "ate: agora" o
+  // primeiro nao abria janela nenhuma e o limite deixava passar um a mais.
+  if (!registro || agora >= registro.ate) registro = { contagem: 0, ate: agora + minutos * 60000 };
+  registro.contagem += 1;
+  contadores.set(chave, registro);
+  if (contadores.size > 5000) {
+    for (const [chaveVelha, valor] of contadores) {
+      if (agora >= valor.ate) contadores.delete(chaveVelha);
+    }
+  }
+  return registro.contagem <= quantas;
+}
+
 /* ------------------------------------------------ consultas */
 async function fotosDe(imovelId) {
   const { rows } = await pool.query(
@@ -196,6 +239,12 @@ async function guardarContato(req, tipo) {
 
 app.post("/anuncie", async (req, res, proximo) => {
   try {
+    if (!dentroDoLimite("form:" + req.ip, 8, 60)) {
+      return res.status(429).send(vista.pagina({ titulo: "Muitos envios",
+        corpo: `<section class="faixa"><h1>Muitos envios seguidos</h1>
+          <p>Espere alguns minutos e tente de novo, ou fale com a gente pelo
+          WhatsApp.</p></section>` }));
+    }
     await guardarContato(req, "ANUNCIE");
     res.send(vista.pagina({ titulo: "Recebido",
       corpo: `<section class="faixa"><h1>Recebemos o seu contato</h1>
@@ -205,6 +254,12 @@ app.post("/anuncie", async (req, res, proximo) => {
 
 app.post("/visita", async (req, res, proximo) => {
   try {
+    if (!dentroDoLimite("form:" + req.ip, 8, 60)) {
+      return res.status(429).send(vista.pagina({ titulo: "Muitos envios",
+        corpo: `<section class="faixa"><h1>Muitos envios seguidos</h1>
+          <p>Espere alguns minutos e tente de novo, ou fale com a gente pelo
+          WhatsApp.</p></section>` }));
+    }
     await guardarContato(req, "VISITA");
     res.send(vista.pagina({ titulo: "Pedido enviado",
       corpo: `<section class="faixa"><h1>Pedido de visita enviado</h1>
@@ -234,16 +289,6 @@ app.get("/fotos/:id", async (req, res, proximo) => {
 });
 
 /* ------------------------------------------------ login */
-const tentativas = new Map();
-function podeTentar(ip) {
-  const agora = Date.now();
-  const registro = tentativas.get(ip) || { contagem: 0, ate: agora };
-  if (agora > registro.ate) { registro.contagem = 0; registro.ate = agora + 15 * 60 * 1000; }
-  registro.contagem += 1;
-  tentativas.set(ip, registro);
-  return registro.contagem <= 10;
-}
-
 app.get("/interna/login", (req, res) => {
   if (req.session.usuario) return res.redirect("/interna");
   res.send(vista.pagina({
@@ -262,12 +307,18 @@ app.get("/interna/login", (req, res) => {
 
 app.post("/interna/login", async (req, res, proximo) => {
   try {
-    if (!podeTentar(req.ip)) return res.status(429).send("Muitas tentativas. Espere alguns minutos.");
+    if (!dentroDoLimite("login:" + req.ip, 10, 15)) {
+      return res.status(429).send("Muitas tentativas. Espere alguns minutos.");
+    }
     const usuario = await auth.autenticar(req.body.email, req.body.senha);
-    if (!usuario) return res.redirect("/interna/login?erro=1");
+    if (!usuario) {
+      await registrar(req, "LOGIN RECUSADO", String(req.body.email || "").slice(0, 120));
+      return res.redirect("/interna/login?erro=1");
+    }
     req.session.regenerate((erro) => {
       if (erro) return proximo(erro);
       req.session.usuario = usuario;
+      registrar(req, "LOGIN", usuario.email);
       const destino = String(req.body.de || "/interna");
       res.redirect(destino.startsWith("/interna") ? destino : "/interna");
     });
@@ -349,7 +400,7 @@ app.get("/interna/api/captacao/:id", async (req, res, proximo) => {
 app.put("/interna/api/captacao/:id", async (req, res, proximo) => {
   try {
     const id = String(req.params.id);
-    const { rows } = await pool.query("SELECT historico, status FROM imoveis WHERE id = $1", [id]);
+    const { rows } = await pool.query("SELECT historico, status, publico FROM imoveis WHERE id = $1", [id]);
     if (!rows.length) return res.status(404).json({ erro: "não encontrada" });
     const status = modelo.limparEstado(req.body.status, rows[0].status);
     const historico = Array.isArray(rows[0].historico) ? rows[0].historico.slice(-60) : [];
@@ -357,11 +408,24 @@ app.put("/interna/api/captacao/:id", async (req, res, proximo) => {
       historico.push({ quando: new Date().toISOString(), quem: req.session.usuario.nome,
                        o_que: "estado: " + rows[0].status + " → " + status });
     }
+    const publicoNovo = modelo.limparPublico(req.body.publico);
     await pool.query(
       `UPDATE imoveis SET publico = $2, interno = $3, status = $4, historico = $5,
               atualizado_em = now() WHERE id = $1`,
-      [id, JSON.stringify(modelo.limparPublico(req.body.publico)),
+      [id, JSON.stringify(publicoNovo),
        JSON.stringify(modelo.limparInterno(req.body.interno)), status, JSON.stringify(historico)]);
+
+    // So o que muda o dinheiro ou a visibilidade vira linha de auditoria: um
+    // registro por tecla digitada seria ruido, e ruido ninguem le.
+    if (status !== rows[0].status) {
+      await registrar(req, "ESTADO", id, { status: rows[0].status }, { status });
+    }
+    const antes = rows[0].publico || {};
+    for (const campo of ["valor_aluguel", "valor_venda", "condominio", "iptu"]) {
+      if (String(antes[campo] || "") !== String(publicoNovo[campo] || "")) {
+        await registrar(req, "PRECO", id, { [campo]: antes[campo] }, { [campo]: publicoNovo[campo] });
+      }
+    }
     res.json({ ok: true, salvo_em: new Date().toISOString(), status });
   } catch (erro) { proximo(erro); }
 });
@@ -408,11 +472,56 @@ app.delete("/interna/api/captacao/:id/fotos/:foto", async (req, res, proximo) =>
   try {
     await pool.query("DELETE FROM fotos WHERE id = $1 AND imovel_id = $2",
       [String(req.params.foto), String(req.params.id)]);
+    await registrar(req, "FOTO EXCLUIDA", String(req.params.id),
+                    { foto: String(req.params.foto) }, null);
     const restantes = await fotosDe(String(req.params.id));
     if (restantes.length && !restantes.some((f) => f.capa)) {
       await pool.query("UPDATE fotos SET capa = TRUE WHERE id = $1", [restantes[0].id]);
     }
     res.json({ ok: true });
+  } catch (erro) { proximo(erro); }
+});
+
+app.get("/interna/senha", (req, res) => {
+  res.send(vista.pagina({
+    titulo: "Trocar a senha", interna: true, usuario: req.session.usuario,
+    corpo: `<section class="entrar">
+      <h1>Trocar a minha senha</h1>
+      ${req.query.erro ? `<p class="erro">${vista.e(req.query.erro)}</p>` : ""}
+      ${req.query.ok ? `<p class="ok-msg">Senha trocada. Ela já vale no próximo login.</p>` : ""}
+      <form method="post" action="/interna/senha">
+        <label>Senha atual<input type="password" name="atual" required
+          autocomplete="current-password"></label>
+        <label>Senha nova<input type="password" name="nova" required minlength="10"
+          autocomplete="new-password"></label>
+        <label>Repita a senha nova<input type="password" name="repetida" required
+          minlength="10" autocomplete="new-password"></label>
+        <p class="dica">Pelo menos 10 caracteres. Depois de trocar aqui, apague a
+          variável ADMIN_SENHA do painel do Render: ela não é mais usada.</p>
+        <button class="principal">Trocar a senha</button>
+      </form></section>`,
+  }));
+});
+
+app.post("/interna/senha", async (req, res, proximo) => {
+  try {
+    const usuario = req.session.usuario;
+    const nova = String(req.body.nova || "");
+    if (nova.length < 10) {
+      return res.redirect("/interna/senha?erro=" + encodeURIComponent("A senha nova precisa de pelo menos 10 caracteres."));
+    }
+    if (nova !== String(req.body.repetida || "")) {
+      return res.redirect("/interna/senha?erro=" + encodeURIComponent("As duas senhas novas não são iguais."));
+    }
+    const conferido = await auth.autenticar(usuario.email, req.body.atual);
+    if (!conferido) {
+      await registrar(req, "SENHA RECUSADA", usuario.email);
+      return res.redirect("/interna/senha?erro=" + encodeURIComponent("A senha atual não confere."));
+    }
+    await pool.query("UPDATE usuarios SET senha_hash = $2 WHERE id = $1",
+                     [usuario.id, auth.gerarHash(nova)]);
+    await registrar(req, "SENHA TROCADA", usuario.email);
+    res.redirect("/interna/senha?ok=1");
   } catch (erro) { proximo(erro); }
 });
 
