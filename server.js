@@ -129,13 +129,28 @@ async function fotosDe(imovelId) {
   return rows;
 }
 
+/**
+ * As fotos de varios imoveis numa consulta so, agrupadas por imovel. Com uma
+ * consulta por imovel, a home com 200 imoveis fazia 201 viagens ao banco.
+ */
+async function fotosDeVarios(imovelIds) {
+  const porImovel = new Map(imovelIds.map((id) => [id, []]));
+  if (!imovelIds.length) return porImovel;
+  const { rows } = await pool.query(
+    `SELECT id, imovel_id, capa, ordem FROM fotos WHERE imovel_id = ANY($1)
+      ORDER BY imovel_id, ordem, criado_em`, [imovelIds]);
+  for (const foto of rows) porImovel.get(foto.imovel_id).push(foto);
+  return porImovel;
+}
+
 async function publicados(busca) {
   const termo = (busca || "").trim().toLowerCase();
   const { rows } = await pool.query(
     "SELECT * FROM imoveis WHERE status = $1 ORDER BY atualizado_em DESC LIMIT 200", [modelo.NO_AR]);
+  const fotos = await fotosDeVarios(rows.map((linha) => linha.id));
   const comFotos = [];
   for (const linha of rows) {
-    const imovel = modelo.paraOPublico(linha, await fotosDe(linha.id));
+    const imovel = modelo.paraOPublico(linha, fotos.get(linha.id));
     if (!termo || JSON.stringify([imovel.bairro, imovel.cidade, imovel.tipo, imovel.titulo])
         .toLowerCase().includes(termo)) comFotos.push(imovel);
   }
