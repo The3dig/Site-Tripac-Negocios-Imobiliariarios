@@ -302,6 +302,34 @@ app.post("/visita", async (req, res, proximo) => {
   } catch (erro) { proximo(erro); }
 });
 
+/**
+ * Para o Google: o que pode ser lido e onde esta a lista. A area interna fica
+ * de fora - robots.txt nao e protecao (quem protege e o login no servidor), e
+ * so evita que a tela de entrar apareca na busca.
+ */
+app.get("/robots.txt", (req, res) => {
+  res.type("text/plain").send(
+    `User-agent: *\nDisallow: /interna\nDisallow: /api/\n\nSitemap: ${enderecoDoSite(req)}/sitemap.xml\n`);
+});
+
+/** A lista das paginas publicas, com cada imovel no ar e a data da ultima mudanca. */
+app.get("/sitemap.xml", async (req, res, proximo) => {
+  try {
+    const site = enderecoDoSite(req);
+    const { rows } = await pool.query(
+      "SELECT codigo, id, atualizado_em FROM imoveis WHERE status = $1 ORDER BY atualizado_em DESC",
+      [modelo.NO_AR]);
+    const url = (caminho, quando) => `  <url><loc>${vista.e(site + caminho)}</loc>${
+      quando ? `<lastmod>${new Date(quando).toISOString().slice(0, 10)}</lastmod>` : ""}</url>`;
+    res.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${["/", "/alugar", "/comprar", "/anuncie"].map((c) => url(c)).join("\n")}
+${rows.map((r) => url("/imovel/" + encodeURIComponent(r.codigo || r.id), r.atualizado_em)).join("\n")}
+</urlset>
+`);
+  } catch (erro) { proximo(erro); }
+});
+
 /** API publica: so o que esta no ar, so campos publicos. */
 app.get("/api/imoveis", async (req, res, proximo) => {
   try { res.json({ imoveis: await publicados(req.query.q) }); }
