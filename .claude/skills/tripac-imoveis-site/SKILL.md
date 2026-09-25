@@ -201,7 +201,19 @@ Testar a regra de visibilidade pedindo a foto **anônimo** (404) e **logado**
 (200). Foi assim que os quatro bugs acima apareceram.
 
 **Não usar `pkill -f "node server.js"`**: o padrão casa com o próprio shell do
-agente e mata a sessão. Usar `pkill -f "[n]ode server.js"`.
+agente e mata a sessão. Usar `pkill -f "[n]ode server.js"` — e nem isso quando o
+**mesmo comando** também contém o texto `node server.js` (um `nohup node
+server.js` na linha seguinte, um heredoc): aí o `[n]` casa com o próprio shell
+de novo. O seguro é guardar o número do processo (`echo $! > /tmp/site.pid`) e
+matar por ele.
+
+**Confira que o servidor NOVO subiu.** Em 25/09/2026, um servidor antigo ficou
+preso na porta 3011; o novo morria com `EADDRINUSE` e o velho respondia no lugar
+dele — duas comparações "antes × depois" deram iguais porque comparavam o código
+velho com ele mesmo. Depois de subir, `kill -0 $(cat /tmp/site.pid)`.
+
+Para contar consultas por página: `ALTER SYSTEM SET log_statement='all'` no
+Postgres local e contar `LOG:  execute` no log entre duas visitas.
 
 ## Cópia de segurança: já ensaiada, e a regra é dele
 
@@ -230,17 +242,35 @@ situação, visita, painel do dia), **4** área interna (criar usuário, ligar
 `emissao.py` do SIGI, **6** LGPD/acessibilidade/log/testes, **7** a ponte com o
 SIGIimob.
 
-Dois achados que ninguém tinha visto e continuam de pé: **`exigirPerfil()` está
-escrito e nunca é chamado** (a estrutura de perfis existe, a regra não), e
-**`publicados()` faz uma consulta por imóvel** para buscar foto — 201 consultas
-por visita à home com 200 imóveis.
+**Fase 2, o que era "sem risco" — feito em 25/09/2026**, um commit por item,
+cada um conferido contra Postgres local:
+
+| Commit | O quê |
+|---|---|
+| `8678aad` | fim do N+1: fotos de todos os publicados numa consulta (`fotosDeVarios`); 41 consultas com 40 imóveis viraram 2, e as 10 respostas públicas saem byte a byte iguais |
+| `27cad09` | `alt` nas fotos (`nomeDoImovel`); a miniatura da lista interna fica com `alt=""` de propósito, o título está ao lado |
+| `0dacf39` | `og:`/Twitter e `canonical`: o link no WhatsApp sai com capa, título e "R$ 2.500,00/mês · 2 dorm. · 72 m² · bairro"; `SITE_URL` fixa o domínio |
+| `7b5c5c4` | `/sitemap.xml` (só PUBLICADO), `/robots.txt`, `noindex` na interna |
+| `bfa730d` | botão de WhatsApp: flutuante no público e "sobre este imóvel" na página dele, com código e nome na mensagem; `WHATSAPP_NUMERO` |
+
+**Decidido pelo Rone na conversa de 25/09/2026:** o WhatsApp é **(12)
+98840-1131** (padrão no código, `WHATSAPP_NUMERO` troca), o e-mail de contato é
+`contato@tripacadvogados.com.br`, e o **logo** existe (casa com "TA" +
+"TRIPAC Negócios Imobiliários", marrom sobre creme) — o arquivo foi mandado na
+conversa, falta trazer para `public/`. E o site é trabalhado **só neste
+repositório**: a pasta `site/` que chegou a nascer num branch do SIGI
+(`claude/wizardly-dirac-5zogw4`, versão Cloudflare) foi superada por este.
+
+Continua de pé: **`exigirPerfil()` está escrito e nunca é chamado** (a estrutura
+de perfis existe, a regra não). E a lista da área interna (`GET /interna`) ainda
+faz uma consulta de foto por captação — o mesmo N+1, do lado de dentro; o
+conserto é o mesmo `fotosDeVarios`.
 
 **Não há nenhum teste automatizado.** Foi tudo conferido na mão. O primeiro teste
 é dívida da Fase 1.
 
 Esperando decisão dele: o banco definitivo (com prazo), apagar `ADMIN_SENHA`,
-quantas pessoas vão usar e quem é corretor, o número de WhatsApp e a mensagem,
-logo e favicon, cidades e bairros dos filtros, se publicar exige autorização
+quantas pessoas vão usar e quem é corretor, cidades e bairros dos filtros, se publicar exige autorização
 assinada, e por quanto tempo o lead fica guardado.
 
 ## Como ele fala, e o que ele valoriza
