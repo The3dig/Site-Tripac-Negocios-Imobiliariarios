@@ -47,6 +47,24 @@ imóvel levando só o telefone.
 A cada `git push` na `main`, o Render refaz o deploy sozinho. **O banco não é
 tocado no deploy**: os imóveis, as fotos e os contatos continuam lá.
 
+### Plano grátis x plano pago
+
+O `render.yaml` está nos **planos gratuitos**, para começar sem cartão. Duas
+consequências, e as duas importam:
+
+1. o site **dorme** depois de ~15 minutos sem acesso, e a primeira abertura
+   demora ~50 segundos;
+2. o **Postgres gratuito expira em 30 dias** — depois disso o Render apaga o
+   banco, com as captações e as fotos dentro.
+
+Para uso de verdade, troque as duas linhas marcadas no `render.yaml`
+(`plan: starter` no site, `plan: basic-256mb` no banco) e faça o deploy de novo:
+são ~US$ 13/mês e o banco continua o mesmo, sem perder nada.
+
+**Alternativa sem custo e sem prazo:** criar o banco no
+[Neon](https://neon.tech) (gratuito, sem expirar) e colar a `DATABASE_URL` dele
+no painel do Render, deixando só o site no Render grátis.
+
 ## Onde ficam os dados
 
 | O quê | Onde |

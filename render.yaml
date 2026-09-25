@@ -1,12 +1,23 @@
-# Publicacao no Render por "Blueprint": New > Blueprint > aponte para este
-# repositorio. O Render cria o site e o banco juntos e refaz o deploy a cada
-# push na branch main. Os segredos NAO ficam aqui: os campos marcados
-# "sync: false" sao digitados no painel do Render, uma vez.
+# Publicacao no Render por "Blueprint": dashboard.render.com/blueprints >
+# New Blueprint Instance > aponte para este repositorio. O Render cria o site e
+# o banco juntos e refaz o deploy a cada push na branch main. Os segredos NAO
+# ficam aqui: os campos "sync: false" sao digitados no painel, uma vez.
+#
+# ESTA VERSAO USA OS PLANOS GRATUITOS, para comecar hoje sem cartao. Duas
+# consequencias, e as duas importam:
+#   1. o site DORME depois de ~15 minutos sem acesso, e a primeira abertura
+#      demora ~50 segundos (as seguintes sao normais);
+#   2. o Postgres gratuito do Render EXPIRA em 30 dias - depois disso o banco e
+#      apagado, com as captacoes e as fotos dentro.
+# Para uso de verdade, troque as duas linhas marcadas abaixo para
+#   plan: starter        (servico web, ~US$ 7/mes)
+#   plan: basic-256mb    (banco, ~US$ 6/mes)
+# e faca o deploy de novo. Trocar de plano NAO apaga o banco.
 services:
   - type: web
     name: site-tripac
     runtime: node
-    plan: starter
+    plan: free                 # <-- troque para: starter
     branch: main
     buildCommand: npm install
     startCommand: node server.js
@@ -30,6 +41,6 @@ services:
 
 databases:
   - name: tripac-banco
-    plan: basic-256mb
+    plan: free                 # <-- troque para: basic-256mb
     databaseName: tripac
     user: tripac
