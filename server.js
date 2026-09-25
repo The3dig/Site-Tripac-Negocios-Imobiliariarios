@@ -99,6 +99,22 @@ async function publicados(busca) {
   return comFotos;
 }
 
+/**
+ * Saude do servico. Sem segredo nenhum: diz se a aplicacao responde e se o
+ * banco responde, e mais nada. E o que o Render (e voce, do celular) usa para
+ * saber se esta de pe.
+ */
+app.get("/health", async (req, res) => {
+  const comeco = Date.now();
+  try {
+    await pool.query("SELECT 1");
+    res.json({ ok: true, banco: "ok", ms: Date.now() - comeco });
+  } catch (erro) {
+    console.error("health: banco fora -", erro.message);
+    res.status(503).json({ ok: false, banco: "fora", ms: Date.now() - comeco });
+  }
+});
+
 /* ------------------------------------------------ site publico */
 app.get("/", async (req, res, proximo) => {
   try {
@@ -335,7 +351,7 @@ app.put("/interna/api/captacao/:id", async (req, res, proximo) => {
     const id = String(req.params.id);
     const { rows } = await pool.query("SELECT historico, status FROM imoveis WHERE id = $1", [id]);
     if (!rows.length) return res.status(404).json({ erro: "não encontrada" });
-    const status = modelo.limparEstado(req.body.status);
+    const status = modelo.limparEstado(req.body.status, rows[0].status);
     const historico = Array.isArray(rows[0].historico) ? rows[0].historico.slice(-60) : [];
     if (status !== rows[0].status) {
       historico.push({ quando: new Date().toISOString(), quem: req.session.usuario.nome,
