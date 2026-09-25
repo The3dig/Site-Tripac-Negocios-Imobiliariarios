@@ -43,6 +43,8 @@ imóvel levando só o telefone.
    (ex.: `https://tripacimoveis.com.br`). É o endereço que vai no link do
    imóvel quando ele é colado no WhatsApp; sem ela, vale o endereço pelo qual o
    site foi chamado.
+   `WHATSAPP_NUMERO` troca o WhatsApp do site (só dígitos, com 55 e DDD). O
+   padrão é o da Tripac, (12) 98840-1131; vazia, o botão some.
 3. Deploy. O endereço sai como `https://site-tripac.onrender.com` (ou o domínio
    que você ligar depois).
 4. Entre em `/interna/login` com o e-mail e a senha do passo 2. **Troque a senha
