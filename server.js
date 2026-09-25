@@ -173,12 +173,22 @@ app.get("/health", async (req, res) => {
   }
 });
 
+/**
+ * O endereco do site, para as etiquetas do WhatsApp/Google, que exigem link
+ * completo. SITE_URL manda (o dominio de verdade); sem ela, vale o endereco
+ * pelo qual o site foi chamado.
+ */
+function enderecoDoSite(req) {
+  return (process.env.SITE_URL || `${req.protocol}://${req.get("host")}`).replace(/\/+$/, "");
+}
+
 /* ------------------------------------------------ site publico */
 app.get("/", async (req, res, proximo) => {
   try {
     const imoveis = await publicados("");
     res.send(vista.pagina({
       titulo: "Imóveis para alugar e comprar",
+      social: { url: enderecoDoSite(req) + "/" },
       corpo: `<section class="capa">
           <h1>Imóveis em Caraguatatuba e região</h1>
           <p>Locação e venda com administração da Tripac.</p>
@@ -200,6 +210,7 @@ app.get("/alugar", async (req, res, proximo) => {
     res.send(vista.listaPublica({
       titulo: "Imóveis para alugar", subtitulo: "Locação em Caraguatatuba e região",
       imoveis: todos.filter((i) => /ALUGAR/.test(i.finalidade)), busca: req.query.q, acao: "/alugar",
+      social: { url: enderecoDoSite(req) + "/alugar" },
     }));
   } catch (erro) { proximo(erro); }
 });
@@ -210,6 +221,7 @@ app.get("/comprar", async (req, res, proximo) => {
     res.send(vista.listaPublica({
       titulo: "Imóveis à venda", subtitulo: "Venda em Caraguatatuba e região",
       imoveis: todos.filter((i) => /VENDER/.test(i.finalidade)), busca: req.query.q, acao: "/comprar",
+      social: { url: enderecoDoSite(req) + "/comprar" },
     }));
   } catch (erro) { proximo(erro); }
 });
@@ -224,13 +236,21 @@ app.get("/imovel/:codigo", async (req, res, proximo) => {
       corpo: `<section class="faixa"><h1>Imóvel não encontrado</h1>
         <p>Ele pode ter saído do ar. <a href="/alugar">Ver os disponíveis</a>.</p></section>`,
     }));
-    res.send(vista.paginaImovel(modelo.paraOPublico(rows[0], await fotosDe(rows[0].id))));
+    const imovel = modelo.paraOPublico(rows[0], await fotosDe(rows[0].id));
+    const capa = imovel.fotos.find((f) => f.capa) || imovel.fotos[0];
+    const site = enderecoDoSite(req);
+    res.send(vista.paginaImovel(imovel, {
+      url: site + "/imovel/" + encodeURIComponent(imovel.codigo),
+      imagem: capa ? site + capa.url : "",
+    }));
   } catch (erro) { proximo(erro); }
 });
 
 app.get("/anuncie", (req, res) => {
   res.send(vista.pagina({
     titulo: "Anuncie seu imóvel",
+    descricao: "Quer alugar ou vender? A Tripac avalia, anuncia e cuida do contrato.",
+    social: { url: enderecoDoSite(req) + "/anuncie" },
     corpo: `<section class="faixa"><h1>Anuncie seu imóvel</h1>
       <p>Deixe seus dados: a Tripac entra em contato para avaliar e captar.</p></section>
       <form class="formulario" method="post" action="/anuncie">

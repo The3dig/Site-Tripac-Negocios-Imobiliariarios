@@ -39,6 +39,10 @@ imóvel levando só o telefone.
      vez, na primeira subida, e guardada como hash scrypt);
    - `ADMIN_NOME` — o nome que aparece na tela.
    `SESSION_SECRET` o próprio Render gera, e `DATABASE_URL` vem do banco.
+   Opcional, e recomendada quando o domínio estiver ligado: `SITE_URL`
+   (ex.: `https://tripacimoveis.com.br`). É o endereço que vai no link do
+   imóvel quando ele é colado no WhatsApp; sem ela, vale o endereço pelo qual o
+   site foi chamado.
 3. Deploy. O endereço sai como `https://site-tripac.onrender.com` (ou o domínio
    que você ligar depois).
 4. Entre em `/interna/login` com o e-mail e a senha do passo 2. **Troque a senha
