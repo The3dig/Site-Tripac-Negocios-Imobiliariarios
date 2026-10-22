@@ -38,6 +38,22 @@ grep -rniE "client_secret|\.pfx|\.p12|\.pem|token_banc|boleto|certificad" \
 git log --all --name-only --pretty=format: | sort -u | grep -iE "\.env$|\.pem|\.p12|\.pfx|cert"
 ```
 
+### Advocacia e imobiliária NÃO se misturam (regra do escritório)
+
+O site é da **TRIPAC Negócios Imobiliários**, e só dela. Nenhum texto fala em
+advogado, advocacia, "segurança jurídica" ou "contrato revisado por advogados", e
+nenhum contato do escritório de advocacia aparece (o e-mail
+`contato@tripacadvogados.com.br` chegou a ir para o rodapé e foi tirado em
+22/10/2026, a pedido do Rone: *"o escritório tem regras muito específicas de não
+misturar a advocacia com a imobiliária"*). O e-mail do site só aparece quando
+houver um da imobiliária (`EMPRESA_EMAIL`). Antes de qualquer entrega:
+
+```bash
+grep -rniE "advoga|advocacia|jur[ií]dica|tripacadvogados" lib server.js public --include="*.js"
+```
+
+Só pode sobrar o comentário que explica esta regra em `lib/empresa.js`.
+
 A ponte com o SIGIimob, quando existir, é **num sentido só**: o SIGIimob **puxa**
 do site o que foi captado. O site continua sem saber que existe banco.
 
