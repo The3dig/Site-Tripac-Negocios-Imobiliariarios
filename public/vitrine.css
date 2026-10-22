@@ -333,3 +333,38 @@ h1,h2,h3{font-family:var(--serifa);font-weight:400;line-height:1.2;letter-spacin
   .bairro{height:120px}
   .bairro strong{font-size:17px}
 }
+
+/* ------------------------------------------------ carrossel de destaques (pagina inicial) */
+.destaques{position:relative;background:var(--marrom-fundo)}
+.slides{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.slides::-webkit-scrollbar{display:none}
+.slides:focus-visible{outline:3px solid var(--dourado);outline-offset:-3px}
+.slide{position:relative;flex:0 0 100%;height:min(72vh,600px);min-height:380px;scroll-snap-align:start;overflow:hidden;color:#fff}
+.slide img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover}
+.slide::after{content:"";position:absolute;top:0;right:0;bottom:0;left:0;
+  background:linear-gradient(90deg,rgba(30,22,18,.78) 0%,rgba(30,22,18,.35) 55%,rgba(30,22,18,0) 100%),
+             linear-gradient(0deg,rgba(30,22,18,.55) 0%,rgba(30,22,18,0) 45%)}
+.slide-texto{position:absolute;z-index:1;left:max(88px,calc((100vw - var(--largura))/2 + 16px));bottom:92px;max-width:560px;padding-right:16px}
+.slide h2{font-size:clamp(28px,4.4vw,48px);margin:0 0 10px;text-shadow:0 2px 16px rgba(0,0,0,.3)}
+.slide-detalhes{font-size:clamp(16px,1.8vw,19px);color:#F3EBE1;margin:0 0 20px}
+.seta-carrossel{position:absolute;top:calc(50% - 40px);z-index:2;width:48px;height:48px;border-radius:50%;border:0;cursor:pointer;
+  background:rgba(255,255,255,.85);color:var(--marrom-escuro);font-size:28px;line-height:1;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+.seta-carrossel:hover{background:#fff}
+.seta-carrossel.anterior{left:16px}
+.seta-carrossel.proxima{right:16px}
+.pontos{position:absolute;z-index:2;left:0;right:0;bottom:56px;display:flex;justify-content:center;align-items:center;gap:8px}
+.pontos a{display:block;width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.5)}
+.pontos a[aria-current]{background:#fff;width:28px;border-radius:5px}
+.pontos .pausar{margin-left:8px;background:rgba(255,255,255,.2);color:#fff;border:0;border-radius:12px;font-size:11px;padding:4px 9px;cursor:pointer}
+.busca-faixa{position:relative;z-index:3;margin-top:-40px}
+.busca-faixa-dentro{max-width:var(--largura);margin:0 auto;padding:0 16px}
+.busca-faixa h1{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.busca-faixa .busca-capa{max-width:none}
+@media (max-width:640px){
+  .slide{height:auto;min-height:0;aspect-ratio:4/5}
+  .slide-texto{left:16px;right:16px;bottom:84px}
+  .seta-carrossel{display:none}
+  .pontos{bottom:52px}
+  .busca-faixa{margin-top:-28px}
+}
+@supports not (aspect-ratio:1/1){@media (max-width:640px){.slide{height:125vw}}}

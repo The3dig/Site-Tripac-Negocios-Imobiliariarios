@@ -14,6 +14,8 @@
     });
   });
 
+  carrossel(document.querySelector("[data-carrossel]"));
+
   var galeria = document.querySelector("[data-galeria]");
   if (!galeria) return;
   var links = Array.prototype.slice.call(galeria.querySelectorAll("a[data-indice]"));
@@ -84,3 +86,73 @@
     a.addEventListener("click", function (ev) { ev.preventDefault(); abrir(n, a); });
   });
 })();
+
+/* O carrossel de destaques da pagina inicial: troca sozinho a cada 6 s, para
+   quando a pessoa passa o mouse, toca, usa o teclado ou aperta pausar, e nao
+   anda sozinho para quem pediu "reduzir movimento" no aparelho. Sem este
+   arquivo, a faixa de fotos continua sendo de arrastar. */
+function carrossel(raiz) {
+  "use strict";
+  if (!raiz) return;
+  var faixa = raiz.querySelector(".slides");
+  var slides = raiz.querySelectorAll(".slide");
+  var pontos = raiz.querySelectorAll("[data-ponto]");
+  var botaoPausa = raiz.querySelector("[data-pausar]");
+  if (slides.length < 2) return;
+  var atual = 0, relogio = null, pausadoPorQuem = false, emCima = false;
+  var semMovimento = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function ir(n) {
+    atual = (n + slides.length) % slides.length;
+    faixa.scrollTo({ left: slides[atual].offsetLeft, behavior: semMovimento ? "auto" : "smooth" });
+    marcar();
+  }
+  function marcar() {
+    Array.prototype.forEach.call(pontos, function (p, i) {
+      if (i === atual) p.setAttribute("aria-current", "true"); else p.removeAttribute("aria-current");
+    });
+  }
+  function andar() {
+    parar();
+    if (semMovimento || pausadoPorQuem || emCima || document.hidden) return;
+    relogio = setInterval(function () { ir(atual + 1); }, 6000);
+  }
+  function parar() { if (relogio) { clearInterval(relogio); relogio = null; } }
+
+  // quem arrasta com o dedo muda o slide: o ponto acompanha
+  var espera;
+  faixa.addEventListener("scroll", function () {
+    clearTimeout(espera);
+    espera = setTimeout(function () {
+      var n = Math.round(faixa.scrollLeft / faixa.clientWidth);
+      if (n !== atual && n >= 0 && n < slides.length) { atual = n; marcar(); }
+    }, 80);
+  }, { passive: true });
+
+  Array.prototype.forEach.call(raiz.querySelectorAll("[data-ir]"), function (b) {
+    b.addEventListener("click", function () { ir(atual + Number(b.getAttribute("data-ir"))); andar(); });
+  });
+  Array.prototype.forEach.call(pontos, function (p, i) {
+    p.addEventListener("click", function (ev) { ev.preventDefault(); ir(i); andar(); });
+  });
+  if (botaoPausa) {
+    if (semMovimento) botaoPausa.hidden = true;
+    botaoPausa.addEventListener("click", function () {
+      pausadoPorQuem = !pausadoPorQuem;
+      botaoPausa.textContent = pausadoPorQuem ? "▶" : "❚❚";
+      botaoPausa.setAttribute("aria-label", pausadoPorQuem ? "Retomar a troca automática" : "Pausar a troca automática");
+      andar();
+    });
+  }
+  faixa.addEventListener("keydown", function (ev) {
+    if (ev.key === "ArrowRight") { ev.preventDefault(); ir(atual + 1); }
+    if (ev.key === "ArrowLeft") { ev.preventDefault(); ir(atual - 1); }
+  });
+  raiz.addEventListener("mouseenter", function () { emCima = true; parar(); });
+  raiz.addEventListener("mouseleave", function () { emCima = false; andar(); });
+  raiz.addEventListener("focusin", function () { emCima = true; parar(); });
+  raiz.addEventListener("focusout", function () { emCima = false; andar(); });
+  raiz.addEventListener("touchstart", function () { pausadoPorQuem = true; parar(); }, { passive: true });
+  document.addEventListener("visibilitychange", andar);
+  andar();
+}
