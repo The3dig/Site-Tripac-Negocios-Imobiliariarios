@@ -151,3 +151,11 @@ body.publico footer{padding-bottom:72px} /* o botao flutuante nao cobre o rodape
 .filtros-internos{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:12px 0 4px}
 .filtros-internos label{display:flex;flex-direction:column;font-size:12.5px;color:var(--cinza);gap:4px}
 .filtros-internos select{padding:9px;border:1px solid var(--linha);border-radius:8px;font-size:15px;background:#fff}
+/* entrada: cadastro, esqueci a senha, aprovacao */
+.links-login{text-align:center;margin:14px 0 0;font-size:14px}
+.aviso-pendente{background:#FFF3D6;color:#5E4700;border-radius:8px;padding:10px 12px}
+.aviso-admin{background:#FFF3D6;border-radius:10px;padding:10px 14px;margin:0 0 12px;font-weight:600}
+.aviso-admin a{color:#5E4700}
+.subtitulo-interno{font-size:17px;margin:22px 0 8px}
+.item.pendente{border-left:4px solid var(--ambar)}
+.topo a.quem{color:#fff;text-decoration:underline;text-underline-offset:3px}

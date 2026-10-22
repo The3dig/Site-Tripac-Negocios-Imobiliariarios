@@ -410,13 +410,86 @@ app.get("/interna/login", (req, res) => {
     corpo: `<section class="entrar">
       <h1>Área interna</h1>
       ${req.query.erro ? `<p class="erro">E-mail ou senha não conferem.</p>` : ""}
+      ${req.query.pendente ? `<p class="aviso-pendente">Seu cadastro ainda está aguardando a aprovação de um administrador.</p>` : ""}
+      ${req.query.cadastro ? `<p class="ok-msg">Cadastro recebido. Assim que um administrador aprovar, você entra com o seu e-mail e a sua senha.</p>` : ""}
+      ${req.query.pedido ? `<p class="ok-msg">Pedido enviado. Um administrador vai gerar uma senha provisória e mandar para você.</p>` : ""}
       <form method="post" action="/interna/login">
         <input type="hidden" name="de" value="${vista.e(req.query.de || "/interna")}">
         <label>E-mail<input name="email" type="email" required autocomplete="username"></label>
         <label>Senha<input name="senha" type="password" required autocomplete="current-password"></label>
         <button class="principal">Entrar</button>
-      </form></section>`,
+      </form>
+      <p class="links-login"><a href="/interna/esqueci">Esqueci a senha</a> · <a href="/interna/cadastro">Criar cadastro</a></p>
+      </section>`,
   }));
+});
+
+/* ------------------------------------------------ cadastro e esqueci a senha (sem login) */
+function telaDeEntrada(titulo, corpo) {
+  return vista.pagina({ titulo, interna: true, corpo: `<section class="entrar">${corpo}
+    <p class="links-login"><a href="/interna/login">Voltar para o login</a></p></section>` });
+}
+
+app.get("/interna/cadastro", (req, res) => {
+  res.send(telaDeEntrada("Criar cadastro", `<h1>Criar cadastro</h1>
+    ${req.query.erro ? `<p class="erro">${vista.e(req.query.erro)}</p>` : ""}
+    <form method="post" action="/interna/cadastro">
+      <label>Nome<input name="nome" required maxlength="120" autocomplete="name"></label>
+      <label>E-mail<input name="email" type="email" required maxlength="120" autocomplete="email"></label>
+      <label>Senha<input name="senha" type="password" required minlength="10" autocomplete="new-password"></label>
+      <label>Repita a senha<input name="repetida" type="password" required minlength="10" autocomplete="new-password"></label>
+      <label>Perfil<select name="perfil">
+        <option value="CORRETOR">Corretor — capta e publica os seus imóveis</option>
+        <option value="ADMIN">Administrador — vê tudo e cuida dos usuários</option></select></label>
+      <p class="dica">Senha com pelo menos 10 caracteres. O cadastro passa pela aprovação de um
+        administrador da Tripac antes do primeiro acesso.</p>
+      <button class="principal">Pedir cadastro</button>
+    </form>`));
+});
+
+app.post("/interna/cadastro", async (req, res, proximo) => {
+  try {
+    const volta = (msg) => res.redirect("/interna/cadastro?erro=" + encodeURIComponent(msg));
+    if (!dentroDoLimite("cadastro:" + req.ip, 5, 60)) return volta("Muitos pedidos seguidos. Tente mais tarde.");
+    const email = modelo.texto(req.body.email, 120).toLowerCase();
+    const nome = modelo.texto(req.body.nome, 120);
+    const senha = String(req.body.senha || "");
+    if (!nome) return volta("Informe o seu nome.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return volta("E-mail inválido.");
+    if (senha.length < 10) return volta("A senha precisa de pelo menos 10 caracteres.");
+    if (senha !== String(req.body.repetida || "")) return volta("As duas senhas não são iguais.");
+    const feito = await auth.pedirCadastro({ nome, email, senha, perfil: req.body.perfil });
+    if (!feito.criado) return volta("Já existe cadastro com este e-mail. Se esqueceu a senha, use \"Esqueci a senha\".");
+    await registrar(req, "CADASTRO PEDIDO", email, null, { nome, perfil: req.body.perfil === "ADMIN" ? "ADMIN" : "CORRETOR" });
+    res.redirect("/interna/login?cadastro=1");
+  } catch (erro) { proximo(erro); }
+});
+
+/**
+ * Esqueci a senha. Sem e-mail configurado no site, o pedido vai para o
+ * ADMIN, que gera uma senha provisoria em Usuarios e manda para a pessoa. A
+ * resposta e a mesma exista o e-mail ou nao: a tela nao serve para descobrir
+ * quem tem conta.
+ */
+app.get("/interna/esqueci", (req, res) => {
+  res.send(telaDeEntrada("Esqueci a senha", `<h1>Esqueci a senha</h1>
+    <form method="post" action="/interna/esqueci">
+      <label>Seu e-mail<input name="email" type="email" required maxlength="120" autocomplete="email"></label>
+      <p class="dica">Um administrador da Tripac recebe o pedido, gera uma senha provisória e manda para você.
+        No primeiro acesso, troque em "Minha conta".</p>
+      <button class="principal">Pedir nova senha</button>
+    </form>`));
+});
+
+app.post("/interna/esqueci", async (req, res, proximo) => {
+  try {
+    const email = modelo.texto(req.body.email, 120).toLowerCase();
+    if (dentroDoLimite("esqueci:" + req.ip, 5, 60)) {
+      const { rows } = await pool.query("SELECT 1 FROM usuarios WHERE email = $1 AND ativo", [email]);
+      if (rows.length) await registrar(req, "PEDIDO DE NOVA SENHA", email);
+    }
+    res.redirect("/interna/login?pedido=1");
+  } catch (erro) { proximo(erro); }
 });
 
 app.post("/interna/login", async (req, res, proximo) => {
@@ -426,6 +499,9 @@ app.post("/interna/login", async (req, res, proximo) => {
     }
     const usuario = await auth.autenticar(req.body.email, req.body.senha);
     if (!usuario) {
+      if (await auth.aguardandoAprovacao(req.body.email, req.body.senha)) {
+        return res.redirect("/interna/login?pendente=1");
+      }
       await registrar(req, "LOGIN RECUSADO", String(req.body.email || "").slice(0, 120));
       return res.redirect("/interna/login?erro=1");
     }
@@ -503,8 +579,14 @@ app.get("/interna", async (req, res, proximo) => {
           <span>captado por <b>${vista.e(captador)}</b> · ${vista.e(dela.length)} foto(s) · ${vista.e(new Date(linha.atualizado_em).toLocaleString("pt-BR"))}</span></span>
         <span class="chip ${vista.e(linha.status)}">${vista.e(linha.status)}</span></a>`;
     });
-    let filtroPessoa = "";
+    let filtroPessoa = "", avisoAdmin = "";
     if (admin) {
+      const { pendentes, pedidosDeSenha } = await listaDeUsuarios();
+      const partes = [
+        pendentes.length && (pendentes.length === 1 ? "1 cadastro aguardando aprovação" : pendentes.length + " cadastros aguardando aprovação"),
+        pedidosDeSenha.length && (pedidosDeSenha.length === 1 ? "1 pedido de nova senha" : pedidosDeSenha.length + " pedidos de nova senha"),
+      ].filter(Boolean);
+      if (partes.length) avisoAdmin = `<p class="aviso-admin"><a href="/interna/usuarios">${partes.join(" e ")} — abrir Usuários</a></p>`;
       const { rows: pessoas } = await pool.query(
         `SELECT DISTINCT u.id, COALESCE(NULLIF(u.nome, ''), u.email) AS nome
            FROM usuarios u JOIN imoveis i ON i.criado_por = u.id ORDER BY 2`);
@@ -515,7 +597,7 @@ app.get("/interna", async (req, res, proximo) => {
     }
     res.send(vista.pagina({
       titulo: "Captações", interna: true, usuario: eu,
-      corpo: `<div class="acoes-topo"><a class="botao principal" href="/interna/captacao/nova">+ Nova captação</a></div>
+      corpo: `${avisoAdmin}<div class="acoes-topo"><a class="botao principal" href="/interna/captacao/nova">+ Nova captação</a></div>
         <form class="filtros-internos" method="get" action="/interna">
           <label>Estado<select name="estado">
             <option value="">Todos</option>
@@ -659,9 +741,12 @@ app.delete("/interna/api/captacao/:id/fotos/:foto", async (req, res, proximo) =>
 
 app.get("/interna/senha", (req, res) => {
   res.send(vista.pagina({
-    titulo: "Trocar a senha", interna: true, usuario: req.session.usuario,
+    titulo: "Minha conta", interna: true, usuario: req.session.usuario,
     corpo: `<section class="entrar">
-      <h1>Trocar a minha senha</h1>
+      <h1>Minha conta</h1>
+      <p>${vista.e(req.session.usuario.nome || "")} · ${vista.e(req.session.usuario.email)} ·
+        ${req.session.usuario.perfil === "ADMIN" ? "Administrador" : "Corretor"}</p>
+      <h2>Trocar a senha</h2>
       ${req.query.erro ? `<p class="erro">${vista.e(req.query.erro)}</p>` : ""}
       ${req.query.ok ? `<p class="ok-msg">Senha trocada. Ela já vale no próximo login.</p>` : ""}
       <form method="post" action="/interna/senha">
@@ -712,10 +797,12 @@ app.post("/interna/senha", async (req, res, proximo) => {
  */
 const soAdmin = auth.exigirPerfil("ADMIN");
 
-function paginaUsuarios(req, linhas, recado) {
+function paginaUsuarios(req, dados, recado) {
+  const { usuarios, pendentes, pedidosDeSenha } = dados;
   const eu = req.session.usuario;
   const mostrar = req.session.senhaParaMostrar;
   delete req.session.senhaParaMostrar;
+  const perfilPedido = (u) => String(u.perfil).slice(auth.PENDENTE.length) === "ADMIN" ? "Administrador" : "Corretor";
   return vista.pagina({
     titulo: "Usuários", interna: true, usuario: eu,
     corpo: `<h1 class="titulo-secao">Quem entra na área interna</h1>
@@ -725,10 +812,29 @@ function paginaUsuarios(req, linhas, recado) {
         <p>E-mail: <strong>${vista.e(mostrar.email)}</strong><br>
            Senha: <strong class="senha-mostrada">${vista.e(mostrar.senha)}</strong></p>
         <p class="dica">Ela aparece só agora. Passe para a pessoa (WhatsApp ou pessoalmente) e peça para
-          trocar em <em>Senha</em> no primeiro acesso. Se fechar sem anotar, gere outra abaixo.</p></section>` : ""}
-      <section class="lista">${linhas.map((u) => `<div class="item">
+          trocar em <em>Minha conta</em> no primeiro acesso. Se fechar sem anotar, gere outra.</p></section>` : ""}
+      ${pendentes.length ? `<h2 class="subtitulo-interno">Aguardando aprovação</h2>
+      <section class="lista">${pendentes.map((u) => `<div class="item pendente">
+        <span class="txt"><strong>${vista.e(u.nome || u.email)}</strong>
+          <span>${vista.e(u.email)} · pediu: <b>${perfilPedido(u)}</b> · em ${vista.e(new Date(u.criado_em).toLocaleString("pt-BR"))}</span></span>
+        <form method="post" action="/interna/usuarios/${u.id}/aprovar" class="em-linha"><input type="hidden" name="perfil" value="CORRETOR">
+          <button class="botao claro">Aprovar como corretor</button></form>
+        <form method="post" action="/interna/usuarios/${u.id}/aprovar" class="em-linha"><input type="hidden" name="perfil" value="ADMIN">
+          <button class="botao claro">Aprovar como administrador</button></form>
+        <form method="post" action="/interna/usuarios/${u.id}/recusar" class="em-linha">
+          <button class="botao claro">Recusar</button></form>
+      </div>`).join("")}</section>` : ""}
+      ${pedidosDeSenha.length ? `<h2 class="subtitulo-interno">Pedidos de nova senha</h2>
+      <section class="lista">${pedidosDeSenha.map((u) => `<div class="item pendente">
+        <span class="txt"><strong>${vista.e(u.nome || u.email)}</strong>
+          <span>${vista.e(u.email)} · pediu em ${vista.e(new Date(u.quando).toLocaleString("pt-BR"))}</span></span>
+        <form method="post" action="/interna/usuarios/${u.id}/senha" class="em-linha">
+          <button class="botao claro">Gerar senha provisória</button></form>
+      </div>`).join("")}</section>` : ""}
+      <h2 class="subtitulo-interno">Usuários</h2>
+      <section class="lista">${usuarios.map((u) => `<div class="item">
         <span class="txt"><strong>${vista.e(u.nome || u.email)}${u.id === eu.id ? " (você)" : ""}</strong>
-          <span>${vista.e(u.email)} · ${vista.e(u.perfil)} · desde ${vista.e(new Date(u.criado_em).toLocaleDateString("pt-BR"))}</span></span>
+          <span>${vista.e(u.email)} · ${u.perfil === "ADMIN" ? "Administrador" : "Corretor"} · desde ${vista.e(new Date(u.criado_em).toLocaleDateString("pt-BR"))}</span></span>
         <span class="chip ${u.ativo ? "PUBLICADO" : "ARQUIVADO"}">${u.ativo ? "ATIVO" : "DESATIVADO"}</span>
         ${u.id === eu.id ? "" : `<form method="post" action="/interna/usuarios/${u.id}/senha" class="em-linha">
             <button class="botao claro">Nova senha provisória</button></form>
@@ -742,17 +848,56 @@ function paginaUsuarios(req, linhas, recado) {
           <label>E-mail (é o login)<input name="email" type="email" required maxlength="120"></label>
           <label>Perfil<select name="perfil">
             <option value="ADMIN">Administrador — vê e muda tudo, inclusive usuários</option>
-            <option value="CORRETOR">Corretor — capta e publica imóveis</option></select></label>
-          <p class="dica">A senha provisória é gerada na hora e aparece uma vez, nesta tela.</p>
+            <option value="CORRETOR">Corretor — capta e publica os seus imóveis</option></select></label>
+          <p class="dica">A senha provisória é gerada na hora e aparece uma vez, nesta tela.
+            A pessoa também pode se cadastrar sozinha em "Criar cadastro", na tela de login.</p>
           <button class="principal">Criar e gerar a senha</button>
         </form></section>`,
   });
 }
 
+/**
+ * Os tres grupos da tela. Pedido de nova senha conta enquanto nenhuma senha
+ * nova foi feita para a pessoa DEPOIS dele (provisoria, troca ou painel).
+ */
 async function listaDeUsuarios() {
-  const { rows } = await pool.query("SELECT id, email, nome, perfil, ativo, criado_em FROM usuarios ORDER BY ativo DESC, nome, email");
-  return rows;
+  const { rows } = await pool.query(
+    "SELECT id, email, nome, perfil, ativo, criado_em FROM usuarios WHERE perfil <> 'RECUSADO' ORDER BY ativo DESC, nome, email");
+  const { rows: pedidos } = await pool.query(
+    `SELECT u.id, u.email, u.nome, MAX(a.quando) AS quando
+       FROM auditoria a JOIN usuarios u ON u.email = a.objeto AND u.ativo
+      WHERE a.acao = 'PEDIDO DE NOVA SENHA'
+        AND NOT EXISTS (SELECT 1 FROM auditoria b WHERE b.objeto = a.objeto AND b.quando > a.quando
+              AND b.acao IN ('SENHA PROVISORIA', 'SENHA TROCADA', 'SENHA REDEFINIDA PELO PAINEL'))
+      GROUP BY u.id, u.email, u.nome ORDER BY quando`);
+  return {
+    pendentes: rows.filter((u) => String(u.perfil).startsWith(auth.PENDENTE)),
+    usuarios: rows.filter((u) => !String(u.perfil).startsWith(auth.PENDENTE)),
+    pedidosDeSenha: pedidos,
+  };
 }
+
+app.post("/interna/usuarios/:id/aprovar", soAdmin, async (req, res, proximo) => {
+  try {
+    const perfil = req.body.perfil === "ADMIN" ? "ADMIN" : "CORRETOR";
+    const { rows } = await pool.query(
+      "UPDATE usuarios SET perfil = $2, ativo = TRUE WHERE id = $1 AND perfil LIKE 'PENDENTE:%' RETURNING email",
+      [parseInt(req.params.id, 10), perfil]);
+    if (rows.length) await registrar(req, "CADASTRO APROVADO", rows[0].email, null, { perfil });
+    res.redirect("/interna/usuarios");
+  } catch (erro) { proximo(erro); }
+});
+
+app.post("/interna/usuarios/:id/recusar", soAdmin, async (req, res, proximo) => {
+  try {
+    // Nao apaga: fica RECUSADO e sem acesso, e o registro diz quem recusou.
+    const { rows } = await pool.query(
+      "UPDATE usuarios SET perfil = 'RECUSADO', ativo = FALSE WHERE id = $1 AND perfil LIKE 'PENDENTE:%' RETURNING email",
+      [parseInt(req.params.id, 10)]);
+    if (rows.length) await registrar(req, "CADASTRO RECUSADO", rows[0].email);
+    res.redirect("/interna/usuarios");
+  } catch (erro) { proximo(erro); }
+});
 
 app.get("/interna/usuarios", soAdmin, async (req, res, proximo) => {
   try { res.send(paginaUsuarios(req, await listaDeUsuarios(), req.query.erro)); }
@@ -787,7 +932,7 @@ app.post("/interna/usuarios/:id/senha", soAdmin, async (req, res, proximo) => {
     if (id === req.session.usuario.id) return res.redirect("/interna/senha");
     const senha = auth.senhaProvisoria();
     const { rows } = await pool.query(
-      "UPDATE usuarios SET senha_hash = $2 WHERE id = $1 RETURNING email, nome", [id, auth.gerarHash(senha)]);
+      "UPDATE usuarios SET senha_hash = $2 WHERE id = $1 AND perfil IN ('ADMIN', 'CORRETOR') RETURNING email, nome", [id, auth.gerarHash(senha)]);
     if (!rows.length) return res.redirect("/interna/usuarios?erro=" + encodeURIComponent("Usuário não encontrado."));
     await registrar(req, "SENHA PROVISORIA", rows[0].email);
     req.session.senhaParaMostrar = { email: rows[0].email, nome: rows[0].nome, senha };
@@ -803,7 +948,7 @@ app.post("/interna/usuarios/:id/ativo", soAdmin, async (req, res, proximo) => {
       return res.redirect("/interna/usuarios?erro=" + encodeURIComponent("Você não pode desativar a si mesmo."));
     }
     const { rows } = await pool.query(
-      "UPDATE usuarios SET ativo = NOT ativo WHERE id = $1 RETURNING email, ativo", [id]);
+      "UPDATE usuarios SET ativo = NOT ativo WHERE id = $1 AND perfil IN ('ADMIN', 'CORRETOR') RETURNING email, ativo", [id]);
     if (!rows.length) return res.redirect("/interna/usuarios?erro=" + encodeURIComponent("Usuário não encontrado."));
     await registrar(req, rows[0].ativo ? "USUARIO REATIVADO" : "USUARIO DESATIVADO", rows[0].email);
     res.redirect("/interna/usuarios");
