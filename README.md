@@ -39,12 +39,14 @@ imóvel levando só o telefone.
      vez, na primeira subida, e guardada como hash scrypt);
    - `ADMIN_NOME` — o nome que aparece na tela.
    `SESSION_SECRET` o próprio Render gera, e `DATABASE_URL` vem do banco.
-   Opcional, e recomendada quando o domínio estiver ligado: `SITE_URL`
-   (ex.: `https://tripacimoveis.com.br`). É o endereço que vai no link do
-   imóvel quando ele é colado no WhatsApp; sem ela, vale o endereço pelo qual o
-   site foi chamado.
+   Opcional: `SITE_URL` (ex.: `https://tripacimoveis.com.br`), o endereço
+   oficial — vai no link colado no WhatsApp e leva o `www` e o `onrender.com`
+   para ele. **Só depois que o domínio abrir com cadeado** (ver "Ligar o
+   domínio" abaixo).
    `WHATSAPP_NUMERO` troca o WhatsApp do site (só dígitos, com 55 e DDD). O
-   padrão é o da Tripac, (12) 98840-1131; vazia, o botão some.
+   padrão é o da Tripac, (12) 98840-1131; vazia, o botão some. Os dados do
+   rodapé (CNPJ, CRECI, e-mail, Instagram) têm padrão em `lib/empresa.js` e
+   mudam por variável (`EMPRESA_*`).
 3. Deploy. O endereço sai como `https://site-tripac.onrender.com` (ou o domínio
    que você ligar depois).
 4. Entre em `/interna/login` com o e-mail e a senha do passo 2. **Troque a senha
@@ -70,6 +72,37 @@ são ~US$ 13/mês e o banco continua o mesmo, sem perder nada.
 **Alternativa sem custo e sem prazo:** criar o banco no
 [Neon](https://neon.tech) (gratuito, sem expirar) e colar a `DATABASE_URL` dele
 no painel do Render, deixando só o site no Render grátis.
+
+## Ligar o domínio tripacimoveis.com.br
+
+Dois lugares, nesta ordem. Nada disso mexe no banco nem nas captações.
+
+1. **No Render** — serviço `site-tripac` → *Settings* → *Custom Domains* →
+   *Add Custom Domain*: `tripacimoveis.com.br`, e depois
+   `www.tripacimoveis.com.br`. O Render mostra, para cada um, o registro que
+   precisa existir no DNS (em geral um **A** com um IP para o domínio sem
+   `www`, e um **CNAME** apontando para `site-tripac.onrender.com` para o
+   `www`). Copie exatamente o que ele mostrar.
+2. **No registro.br** — entre com a conta dona do domínio → o domínio →
+   *DNS* → *Configurar zona DNS* (modo avançado) → crie os registros do passo
+   1. Se o registro.br pedir para "usar os servidores DNS do Registro.br",
+   aceite.
+3. Espere o DNS propagar (de minutos a algumas horas). O Render mostra
+   *Verified* e emite o certificado (cadeado) sozinho.
+4. **Só depois que `https://tripacimoveis.com.br` abrir com o cadeado**,
+   coloque no serviço a variável `SITE_URL=https://tripacimoveis.com.br`.
+   Com ela, o `www` e o endereço `onrender.com` passam a levar para o domínio
+   oficial. **Antes** do cadeado, ela mandaria todo mundo para um endereço que
+   ainda não abre — por isso é o último passo.
+
+## A foto de Caraguatatuba na capa
+
+A capa da página inicial usa, nesta ordem: `public/img/caragua.jpg` se o
+arquivo existir; senão, a foto de capa do imóvel publicado mais recente;
+senão, um fundo com a marca. Para trocar a foto da cidade, coloque o arquivo
+em `public/img/caragua.jpg` (deitada, 2000 px de largura, até ~400 KB) e, se a
+foto for de licença livre, o crédito em `public/img/caragua.txt` — ele aparece
+no rodapé. Foto tirada por vocês dispensa crédito.
 
 ## Onde ficam os dados
 
