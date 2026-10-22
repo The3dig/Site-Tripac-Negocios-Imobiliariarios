@@ -626,6 +626,116 @@ app.post("/interna/senha", async (req, res, proximo) => {
   } catch (erro) { proximo(erro); }
 });
 
+/* ------------------------------------------------ usuarios (so ADMIN) */
+/**
+ * Quem entra na area interna. So ADMIN mexe aqui, e a regra e do SERVIDOR
+ * (exigirPerfil), nao do botao: esconder o link nao e permissao.
+ *
+ * A senha de quem entra pela primeira vez e PROVISORIA, gerada aqui e mostrada
+ * UMA vez na tela, para ser passada a pessoa; ela troca em "Senha" no primeiro
+ * acesso. Ninguem escolhe a senha do outro, e a senha nunca fica guardada
+ * legivel - nem na sessao depois de mostrada.
+ */
+const soAdmin = auth.exigirPerfil("ADMIN");
+
+function paginaUsuarios(req, linhas, recado) {
+  const eu = req.session.usuario;
+  const mostrar = req.session.senhaParaMostrar;
+  delete req.session.senhaParaMostrar;
+  return vista.pagina({
+    titulo: "Usuários", interna: true, usuario: eu,
+    corpo: `<h1 class="titulo-secao">Quem entra na área interna</h1>
+      ${recado ? `<p class="erro">${vista.e(recado)}</p>` : ""}
+      ${mostrar ? `<section class="faixa senha-provisoria">
+        <h2>Senha provisória de ${vista.e(mostrar.nome || mostrar.email)}</h2>
+        <p>E-mail: <strong>${vista.e(mostrar.email)}</strong><br>
+           Senha: <strong class="senha-mostrada">${vista.e(mostrar.senha)}</strong></p>
+        <p class="dica">Ela aparece só agora. Passe para a pessoa (WhatsApp ou pessoalmente) e peça para
+          trocar em <em>Senha</em> no primeiro acesso. Se fechar sem anotar, gere outra abaixo.</p></section>` : ""}
+      <section class="lista">${linhas.map((u) => `<div class="item">
+        <span class="txt"><strong>${vista.e(u.nome || u.email)}${u.id === eu.id ? " (você)" : ""}</strong>
+          <span>${vista.e(u.email)} · ${vista.e(u.perfil)} · desde ${vista.e(new Date(u.criado_em).toLocaleDateString("pt-BR"))}</span></span>
+        <span class="chip ${u.ativo ? "PUBLICADO" : "ARQUIVADO"}">${u.ativo ? "ATIVO" : "DESATIVADO"}</span>
+        ${u.id === eu.id ? "" : `<form method="post" action="/interna/usuarios/${u.id}/senha" class="em-linha">
+            <button class="botao claro">Nova senha provisória</button></form>
+          <form method="post" action="/interna/usuarios/${u.id}/ativo" class="em-linha">
+            <button class="botao claro">${u.ativo ? "Desativar" : "Reativar"}</button></form>`}
+      </div>`).join("")}</section>
+      <section class="entrar">
+        <h2>Novo usuário</h2>
+        <form method="post" action="/interna/usuarios">
+          <label>Nome<input name="nome" required maxlength="120" placeholder="Ex.: Dr. Allan"></label>
+          <label>E-mail (é o login)<input name="email" type="email" required maxlength="120"></label>
+          <label>Perfil<select name="perfil">
+            <option value="ADMIN">Administrador — vê e muda tudo, inclusive usuários</option>
+            <option value="CORRETOR">Corretor — capta e publica imóveis</option></select></label>
+          <p class="dica">A senha provisória é gerada na hora e aparece uma vez, nesta tela.</p>
+          <button class="principal">Criar e gerar a senha</button>
+        </form></section>`,
+  });
+}
+
+async function listaDeUsuarios() {
+  const { rows } = await pool.query("SELECT id, email, nome, perfil, ativo, criado_em FROM usuarios ORDER BY ativo DESC, nome, email");
+  return rows;
+}
+
+app.get("/interna/usuarios", soAdmin, async (req, res, proximo) => {
+  try { res.send(paginaUsuarios(req, await listaDeUsuarios(), req.query.erro)); }
+  catch (erro) { proximo(erro); }
+});
+
+app.post("/interna/usuarios", soAdmin, async (req, res, proximo) => {
+  try {
+    const email = modelo.texto(req.body.email, 120).toLowerCase();
+    const nome = modelo.texto(req.body.nome, 120);
+    const perfil = auth.PERFIS.includes(req.body.perfil) ? req.body.perfil : "CORRETOR";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.redirect("/interna/usuarios?erro=" + encodeURIComponent("E-mail inválido."));
+    }
+    const { rows: existe } = await pool.query("SELECT 1 FROM usuarios WHERE email = $1", [email]);
+    if (existe.length) {
+      return res.redirect("/interna/usuarios?erro=" + encodeURIComponent(
+        "Já existe usuário com este e-mail. Use 'Nova senha provisória' na linha dele."));
+    }
+    const senha = auth.senhaProvisoria();
+    await pool.query("INSERT INTO usuarios (email, nome, senha_hash, perfil) VALUES ($1, $2, $3, $4)",
+      [email, nome, auth.gerarHash(senha), perfil]);
+    await registrar(req, "USUARIO CRIADO", email, null, { nome, perfil });
+    req.session.senhaParaMostrar = { email, nome, senha };
+    res.redirect("/interna/usuarios");
+  } catch (erro) { proximo(erro); }
+});
+
+app.post("/interna/usuarios/:id/senha", soAdmin, async (req, res, proximo) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (id === req.session.usuario.id) return res.redirect("/interna/senha");
+    const senha = auth.senhaProvisoria();
+    const { rows } = await pool.query(
+      "UPDATE usuarios SET senha_hash = $2 WHERE id = $1 RETURNING email, nome", [id, auth.gerarHash(senha)]);
+    if (!rows.length) return res.redirect("/interna/usuarios?erro=" + encodeURIComponent("Usuário não encontrado."));
+    await registrar(req, "SENHA PROVISORIA", rows[0].email);
+    req.session.senhaParaMostrar = { email: rows[0].email, nome: rows[0].nome, senha };
+    res.redirect("/interna/usuarios");
+  } catch (erro) { proximo(erro); }
+});
+
+app.post("/interna/usuarios/:id/ativo", soAdmin, async (req, res, proximo) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    // Desativar a si mesmo trancaria a porta por dentro.
+    if (id === req.session.usuario.id) {
+      return res.redirect("/interna/usuarios?erro=" + encodeURIComponent("Você não pode desativar a si mesmo."));
+    }
+    const { rows } = await pool.query(
+      "UPDATE usuarios SET ativo = NOT ativo WHERE id = $1 RETURNING email, ativo", [id]);
+    if (!rows.length) return res.redirect("/interna/usuarios?erro=" + encodeURIComponent("Usuário não encontrado."));
+    await registrar(req, rows[0].ativo ? "USUARIO REATIVADO" : "USUARIO DESATIVADO", rows[0].email);
+    res.redirect("/interna/usuarios");
+  } catch (erro) { proximo(erro); }
+});
+
 app.get("/interna/contatos", async (req, res, proximo) => {
   try {
     const { rows } = await pool.query("SELECT * FROM contatos ORDER BY criado_em DESC LIMIT 200");
@@ -665,6 +775,8 @@ preparar()
   .then(async () => {
     const semeado = await auth.semearAdministrador();
     if (semeado.criado) console.log("administrador criado a partir de ADMIN_EMAIL");
+    if (semeado.redefinido) console.log("senha do administrador REDEFINIDA pelo painel - apague ADMIN_REDEFINIR e ADMIN_SENHA");
+    else if (process.env.ADMIN_REDEFINIR) console.log("ADMIN_REDEFINIR: " + (semeado.motivo || "nada feito"));
     app.listen(porta, () => console.log("no ar na porta " + porta));
   })
   .catch((erro) => { console.error("nao subiu:", erro.message); process.exit(1); });

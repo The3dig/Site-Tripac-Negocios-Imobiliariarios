@@ -141,3 +141,9 @@ button.principal{background:var(--marrom);border-color:var(--marrom);color:#fff;
 .whats-flutuante::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;
   background:#fff;margin-right:8px;vertical-align:1px}
 body.publico footer{padding-bottom:72px} /* o botao flutuante nao cobre o rodape */
+/* usuarios: a senha provisoria aparece uma vez, grande, para ser copiada sem erro */
+.senha-provisoria{border:2px solid var(--verde);border-radius:12px;padding:16px;margin-bottom:16px}
+.senha-mostrada{font:700 22px/1.4 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.06em;user-select:all}
+.em-linha{display:inline;margin:0 0 0 6px}
+.em-linha .botao{font-size:12px;padding:6px 10px}
+.item{flex-wrap:wrap}
