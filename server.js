@@ -186,21 +186,7 @@ function enderecoDoSite(req) {
 app.get("/", async (req, res, proximo) => {
   try {
     const imoveis = await publicados("");
-    res.send(vista.pagina({
-      titulo: "Imóveis para alugar e comprar",
-      social: { url: enderecoDoSite(req) + "/" },
-      corpo: `<section class="capa">
-          <h1>Imóveis em Caraguatatuba e região</h1>
-          <p>Locação e venda com administração da Tripac.</p>
-          <p class="acoes"><a class="botao" href="/alugar">Alugar</a>
-             <a class="botao" href="/comprar">Comprar</a>
-             <a class="botao claro" href="/anuncie">Anuncie seu imóvel</a></p>
-        </section>
-        <h2 class="titulo-secao">Últimos imóveis</h2>
-        <section class="grade">${
-          imoveis.length ? imoveis.slice(0, 12).map(vista.cartaoImovel).join("")
-                         : `<p class="vazio">Em breve.</p>`}</section>`,
-    }));
+    res.send(vista.paginaInicial(imoveis, { url: enderecoDoSite(req) + "/" }));
   } catch (erro) { proximo(erro); }
 });
 
