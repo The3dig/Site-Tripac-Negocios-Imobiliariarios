@@ -21,7 +21,7 @@ services:
     branch: main
     buildCommand: npm install
     startCommand: node server.js
-    healthCheckPath: /
+    healthCheckPath: /vivo        # nao toca no banco: deixa o banco gratuito descansar
     autoDeploy: true
     envVars:
       - key: DATABASE_URL

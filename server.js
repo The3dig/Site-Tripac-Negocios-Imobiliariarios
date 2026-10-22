@@ -158,6 +158,14 @@ async function publicados(busca) {
 }
 
 /**
+ * "Estou de pe", sem tocar no banco. E o que o Render cutuca para saber se o
+ * servico esta vivo, e o que um "ping" de fora pode chamar para o site nao
+ * dormir. Se fosse a pagina inicial (que consulta o banco), o banco gratuito do
+ * Neon nunca descansaria e gastaria as horas gratuitas dele.
+ */
+app.get("/vivo", (req, res) => res.type("text/plain").set("Cache-Control", "no-store").send("ok"));
+
+/**
  * Saude do servico. Sem segredo nenhum: diz se a aplicacao responde e se o
  * banco responde, e mais nada. E o que o Render (e voce, do celular) usa para
  * saber se esta de pe.
@@ -192,7 +200,7 @@ function enderecoDoSite(req) {
  */
 app.use((req, res, proximo) => {
   const oficial = process.env.SITE_URL;
-  if (!oficial || req.path === "/health" || req.method !== "GET") return proximo();
+  if (!oficial || req.path === "/health" || req.path === "/vivo" || req.method !== "GET") return proximo();
   let alvo;
   try { alvo = new URL(oficial); } catch { return proximo(); }
   const host = String(req.get("host") || "").toLowerCase();
