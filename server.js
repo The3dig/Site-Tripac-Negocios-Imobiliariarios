@@ -374,15 +374,20 @@ app.get("/api/imoveis", async (req, res, proximo) => {
   catch (erro) { proximo(erro); }
 });
 
-/** A foto so aparece se o imovel estiver publicado ou se quem pede estiver logado. */
+/**
+ * A foto so aparece se o imovel estiver publicado - ou, fora do ar, para quem
+ * pode ver aquela captacao: o ADMIN e quem captou (ver podeVerCaptacao).
+ */
 app.get("/fotos/:id", async (req, res, proximo) => {
   try {
     const { rows } = await pool.query(
-      `SELECT f.conteudo, f.tipo, i.status FROM fotos f
+      `SELECT f.conteudo, f.tipo, i.status, i.criado_por FROM fotos f
          JOIN imoveis i ON i.id = f.imovel_id WHERE f.id = $1`, [String(req.params.id)]);
     const foto = rows[0];
-    const logado = req.session && req.session.usuario;
-    if (!foto || (foto.status !== modelo.NO_AR && !logado)) return res.status(404).end();
+    const usuario = req.session && req.session.usuario;
+    if (!foto || (foto.status !== modelo.NO_AR && !podeVerCaptacao(usuario, foto.criado_por))) {
+      return res.status(404).end();
+    }
     res.set("Content-Type", foto.tipo);
     res.set("Cache-Control", foto.status === modelo.NO_AR ? "public, max-age=86400" : "private, no-store");
     res.send(foto.conteudo);
@@ -433,26 +438,87 @@ app.get("/interna/sair", (req, res) => {
 /* ------------------------------------------------ area interna */
 app.use("/interna", auth.exigirLogin);
 
+/**
+ * Quem ve cada captacao (decidido pelo Rone em 22/10/2026): o ADMIN ve e mexe
+ * em todas; o CORRETOR, so nas que ele captou (imoveis.criado_por). A regra e
+ * do SERVIDOR e esta num lugar so: o porteiro abaixo fica na frente de TODAS
+ * as rotas que recebem o id de uma captacao - pagina, leitura, gravacao,
+ * fotos, ordem e exclusao de foto -, e a lista e as fotos usam a mesma funcao.
+ * Rota nova de captacao debaixo desses dois caminhos ja nasce protegida.
+ */
+function podeVerCaptacao(usuario, criadoPor) {
+  if (!usuario) return false;
+  return usuario.perfil === "ADMIN" || (criadoPor !== null && Number(criadoPor) === Number(usuario.id));
+}
+
+app.use(["/interna/captacao/:id", "/interna/api/captacao/:id"], async (req, res, proximo) => {
+  try {
+    if (req.params.id === "nova") return proximo();
+    const usuario = req.session.usuario;
+    if (usuario.perfil === "ADMIN") return proximo();
+    const { rows } = await pool.query("SELECT criado_por FROM imoveis WHERE id = $1", [String(req.params.id)]);
+    if (rows.length && podeVerCaptacao(usuario, rows[0].criado_por)) return proximo();
+    // 404, e nao 403: para quem nao pode ver, a captacao do outro nao existe.
+    if (req.originalUrl.startsWith("/interna/api/")) return res.status(404).json({ erro: "não encontrada" });
+    return res.status(404).send("Captação não encontrada.");
+  } catch (erro) { proximo(erro); }
+});
+
+const ESTADOS_ESCRITOS = { RASCUNHO: "Rascunho", REVISAO: "Em revisão", PUBLICADO: "Publicado", PAUSADO: "Pausado", ARQUIVADO: "Arquivado" };
+
 app.get("/interna", async (req, res, proximo) => {
   try {
-    const { rows } = await pool.query("SELECT * FROM imoveis ORDER BY atualizado_em DESC LIMIT 300");
-    const cartoes = [];
-    for (const linha of rows) {
-      const fotos = await fotosDe(linha.id);
-      const capa = fotos.find((f) => f.capa) || fotos[0];
+    const eu = req.session.usuario;
+    const admin = eu.perfil === "ADMIN";
+    const estado = modelo.ESTADOS.includes(req.query.estado) ? req.query.estado : "";
+    const por = admin && /^\d+$/.test(String(req.query.por || "")) ? Number(req.query.por) : null;
+    const condicoes = [], valores = [];
+    if (!admin) { valores.push(eu.id); condicoes.push(`i.criado_por = $${valores.length}`); }
+    if (por !== null) { valores.push(por); condicoes.push(`i.criado_por = $${valores.length}`); }
+    if (estado) { valores.push(estado); condicoes.push(`i.status = $${valores.length}`); }
+    const { rows } = await pool.query(
+      `SELECT i.*, u.nome AS captador_nome, u.email AS captador_email
+         FROM imoveis i LEFT JOIN usuarios u ON u.id = i.criado_por
+        ${condicoes.length ? "WHERE " + condicoes.join(" AND ") : ""}
+        ORDER BY i.atualizado_em DESC LIMIT 300`, valores);
+    const fotos = await fotosDeVarios(rows.map((linha) => linha.id));
+    const cartoes = rows.map((linha) => {
+      const dela = fotos.get(linha.id);
+      const capa = dela.find((f) => f.capa) || dela[0];
       const p = linha.publico || {}, i = linha.interno || {};
       const titulo = p.titulo || [i.logradouro, i.numero].filter(Boolean).join(", ")
         || [p.tipo, p.bairro].filter(Boolean).join(" · ") || "Sem endereço ainda";
-      cartoes.push(`<a class="item" href="/interna/captacao/${vista.e(linha.id)}">
+      const captador = linha.captador_nome || linha.captador_email || i.captado_por || "sem registro";
+      return `<a class="item" href="/interna/captacao/${vista.e(linha.id)}">
         ${capa ? `<img src="/fotos/${vista.e(capa.id)}" alt="">` : `<span class="semfoto">sem foto</span>`}
         <span class="txt"><strong>${vista.e(titulo)}</strong>
-          <span>${vista.e(fotos.length)} foto(s) · ${vista.e(new Date(linha.atualizado_em).toLocaleString("pt-BR"))}</span></span>
-        <span class="chip ${vista.e(linha.status)}">${vista.e(linha.status)}</span></a>`);
+          <span>captado por <b>${vista.e(captador)}</b> · ${vista.e(dela.length)} foto(s) · ${vista.e(new Date(linha.atualizado_em).toLocaleString("pt-BR"))}</span></span>
+        <span class="chip ${vista.e(linha.status)}">${vista.e(linha.status)}</span></a>`;
+    });
+    let filtroPessoa = "";
+    if (admin) {
+      const { rows: pessoas } = await pool.query(
+        `SELECT DISTINCT u.id, COALESCE(NULLIF(u.nome, ''), u.email) AS nome
+           FROM usuarios u JOIN imoveis i ON i.criado_por = u.id ORDER BY 2`);
+      filtroPessoa = `<label>Captado por<select name="por">
+          <option value="">Todos</option>
+          ${pessoas.map((u) => `<option value="${u.id}"${por === u.id ? " selected" : ""}>${vista.e(u.nome)}</option>`).join("")}
+        </select></label>`;
     }
     res.send(vista.pagina({
-      titulo: "Captações", interna: true, usuario: req.session.usuario,
+      titulo: "Captações", interna: true, usuario: eu,
       corpo: `<div class="acoes-topo"><a class="botao principal" href="/interna/captacao/nova">+ Nova captação</a></div>
-        <section class="lista">${cartoes.join("") || `<p class="vazio">Nenhuma captação ainda.</p>`}</section>`,
+        <form class="filtros-internos" method="get" action="/interna">
+          <label>Estado<select name="estado">
+            <option value="">Todos</option>
+            ${modelo.ESTADOS.map((s) => `<option value="${s}"${estado === s ? " selected" : ""}>${ESTADOS_ESCRITOS[s]}</option>`).join("")}
+          </select></label>
+          ${filtroPessoa}
+          <button class="botao claro">Filtrar</button>
+        </form>
+        <p class="dica">${admin ? "Você vê as captações de todos." : "Você vê as captações que você fez."}
+          ${rows.length === 1 ? "1 captação" : rows.length + " captações"}${estado || por !== null ? ' · <a href="/interna">limpar filtros</a>' : ""}</p>
+        <section class="lista">${cartoes.join("") || `<p class="vazio">Nenhuma captação aqui.</p>`}</section>`,
     }));
   } catch (erro) { proximo(erro); }
 });
@@ -738,13 +804,22 @@ app.post("/interna/usuarios/:id/ativo", soAdmin, async (req, res, proximo) => {
 
 app.get("/interna/contatos", async (req, res, proximo) => {
   try {
-    const { rows } = await pool.query("SELECT * FROM contatos ORDER BY criado_em DESC LIMIT 200");
+    // Pedido de VISITA e do imovel: o corretor ve so os dos imoveis dele.
+    // "Quero anunciar" e oportunidade de captacao: todos veem.
+    const eu = req.session.usuario;
+    const admin = eu.perfil === "ADMIN";
+    const { rows } = await pool.query(
+      `SELECT c.*, i.codigo AS imovel_codigo FROM contatos c LEFT JOIN imoveis i ON i.id = c.imovel_id
+        ${admin ? "" : "WHERE c.tipo <> 'VISITA' OR i.criado_por = $1"}
+        ORDER BY c.criado_em DESC LIMIT 200`, admin ? [] : [eu.id]);
     res.send(vista.pagina({
-      titulo: "Contatos do site", interna: true, usuario: req.session.usuario,
+      titulo: "Contatos do site", interna: true, usuario: eu,
       corpo: `<h1 class="titulo-secao">Contatos do site</h1>
+        <p class="dica">${admin ? "Você vê todos os contatos." :
+          "Você vê os pedidos de visita dos seus imóveis e todos os pedidos de anúncio."}</p>
         <section class="lista">${rows.map((c) => `<div class="item">
           <span class="txt"><strong>${vista.e(c.nome)} · ${vista.e(c.telefone)}</strong>
-          <span>${vista.e(c.tipo)} · ${vista.e(new Date(c.criado_em).toLocaleString("pt-BR"))}
+          <span>${vista.e(c.tipo)}${c.imovel_codigo ? " · imóvel " + vista.e(c.imovel_codigo) : ""} · ${vista.e(new Date(c.criado_em).toLocaleString("pt-BR"))}
             ${c.email ? " · " + vista.e(c.email) : ""}</span>
           <span>${vista.e(c.mensagem)}</span></span></div>`).join("")
           || `<p class="vazio">Nenhum contato ainda.</p>`}</section>`,

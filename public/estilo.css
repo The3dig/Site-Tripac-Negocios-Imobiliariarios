@@ -147,3 +147,7 @@ body.publico footer{padding-bottom:72px} /* o botao flutuante nao cobre o rodape
 .em-linha{display:inline;margin:0 0 0 6px}
 .em-linha .botao{font-size:12px;padding:6px 10px}
 .item{flex-wrap:wrap}
+/* filtros da lista de captacoes */
+.filtros-internos{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:12px 0 4px}
+.filtros-internos label{display:flex;flex-direction:column;font-size:12.5px;color:var(--cinza);gap:4px}
+.filtros-internos select{padding:9px;border:1px solid var(--linha);border-radius:8px;font-size:15px;background:#fff}
