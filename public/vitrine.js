@@ -4,6 +4,16 @@
    tambem amplia. Arquivo separado, e nao <script> na pagina: a CSP nao deixa. */
 (function () {
   "use strict";
+  // "Copiar link" do imovel: copia e diz que copiou.
+  Array.prototype.forEach.call(document.querySelectorAll("[data-copiar]"), function (botao) {
+    botao.addEventListener("click", function () {
+      var texto = botao.getAttribute("data-copiar");
+      var pronto = function () { var antes = botao.textContent; botao.textContent = "Link copiado"; setTimeout(function () { botao.textContent = antes; }, 2000); };
+      if (navigator.clipboard) navigator.clipboard.writeText(texto).then(pronto, function () { window.prompt("Copie o link:", texto); });
+      else window.prompt("Copie o link:", texto);
+    });
+  });
+
   var galeria = document.querySelector("[data-galeria]");
   if (!galeria) return;
   var links = Array.prototype.slice.call(galeria.querySelectorAll("a[data-indice]"));

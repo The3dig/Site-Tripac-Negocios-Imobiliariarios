@@ -297,10 +297,15 @@ app.get("/imovel/:codigo", async (req, res, proximo) => {
     const imovel = modelo.paraOPublico(rows[0], await fotosDe(rows[0].id));
     const capa = imovel.fotos.find((f) => f.capa) || imovel.fotos[0];
     const site = enderecoDoSite(req);
+    // Parecidos: mesma finalidade; primeiro o mesmo bairro, depois o mesmo tipo.
+    const finalidade = /ALUGAR/.test(imovel.finalidade) ? /ALUGAR/ : /VENDER/;
+    const nota = (i) => (i.bairro === imovel.bairro ? 2 : 0) + (i.tipo === imovel.tipo ? 1 : 0);
+    const semelhantes = (await publicados("")).filter((i) => i.id !== imovel.id && finalidade.test(i.finalidade))
+      .sort((a, b) => nota(b) - nota(a)).slice(0, 3);
     res.send(vista.paginaImovel(imovel, {
       url: site + "/imovel/" + encodeURIComponent(imovel.codigo), site,
       imagem: capa ? site + capa.url : "",
-    }));
+    }, semelhantes));
   } catch (erro) { proximo(erro); }
 });
 
