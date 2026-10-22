@@ -478,7 +478,7 @@ app.get("/interna/captacao/:id", async (req, res, proximo) => {
     if (!rows.length) return res.status(404).send("Captação não encontrada.");
     res.send(vista.pagina({
       titulo: "Captação", interna: true, usuario: req.session.usuario,
-      corpo: `<div id="captacao" data-id="${vista.e(rows[0].id)}"></div><script src="/captacao.js" defer></script>`,
+      corpo: `<div id="captacao" data-id="${vista.e(rows[0].id)}"></div><script src="${vista.ARQUIVO.captacao}" defer></script>`,
     }));
   } catch (erro) { proximo(erro); }
 });
