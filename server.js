@@ -183,33 +183,97 @@ function enderecoDoSite(req) {
 }
 
 /* ------------------------------------------------ site publico */
+
+/**
+ * Quando o dominio estiver ligado, quem chega por www.tripacimoveis.com.br (ou
+ * pelo endereco do Render) vai para o endereco oficial: um site so, um link so
+ * no Google e no WhatsApp. So age com SITE_URL definida - sem ela, nao ha para
+ * onde mandar. /health fica de fora: e o Render quem chama, pelo endereco dele.
+ */
+app.use((req, res, proximo) => {
+  const oficial = process.env.SITE_URL;
+  if (!oficial || req.path === "/health" || req.method !== "GET") return proximo();
+  let alvo;
+  try { alvo = new URL(oficial); } catch { return proximo(); }
+  const host = String(req.get("host") || "").toLowerCase();
+  if (host === alvo.host || host.startsWith("localhost") || host.startsWith("127.0.0.1")) return proximo();
+  if (host === "www." + alvo.host || host.endsWith(".onrender.com")) {
+    return res.redirect(301, oficial.replace(/\/+$/, "") + req.originalUrl);
+  }
+  proximo();
+});
+
+app.get("/favicon.ico", (req, res) => res.redirect(301, "/marca/favicon-32.png"));
+
 app.get("/", async (req, res, proximo) => {
   try {
     const imoveis = await publicados("");
-    res.send(vista.paginaInicial(imoveis, { url: enderecoDoSite(req) + "/" }));
+    const site = enderecoDoSite(req);
+    res.send(vista.paginaInicial(imoveis, { url: site + "/", site }));
   } catch (erro) { proximo(erro); }
 });
 
+/**
+ * Os filtros da busca, lidos da URL e limpos: so o que se conhece entra. Valor
+ * "2.500" e "2500" sao a mesma coisa (modelo.numero ja sabe o milhar).
+ */
+function filtrosDaBusca(query) {
+  const texto = (v, n) => modelo.texto(v, n || 80);
+  const f = {
+    q: texto(query.q), tipo: texto(query.tipo), bairro: texto(query.bairro),
+    dorm: /^[1-9]$/.test(String(query.dorm || "")) ? String(query.dorm) : "",
+    ate: modelo.numero(query.ate) ? String(modelo.numero(query.ate)) : "",
+    ordem: ["menor", "maior"].includes(query.ordem) ? query.ordem : "",
+  };
+  return f;
+}
+
+const POR_PAGINA = 12;
+
+/** /alugar e /comprar: a mesma busca, com a finalidade de cada uma. */
+async function listar(req, res, { finalidade, titulo, subtitulo, acao, ativo }) {
+  const filtros = filtrosDaBusca(req.query);
+  const todos = (await publicados(filtros.q)).filter((i) => finalidade.test(i.finalidade));
+  const valor = (i) => Number(acao === "/alugar" ? i.valor_aluguel : i.valor_venda) || 0;
+  let lista = todos.filter((i) =>
+    (!filtros.tipo || i.tipo === filtros.tipo) &&
+    (!filtros.bairro || i.bairro === filtros.bairro) &&
+    (!filtros.dorm || Number(i.dormitorios || 0) >= Number(filtros.dorm)) &&
+    (!filtros.ate || (valor(i) > 0 && valor(i) <= Number(filtros.ate))));
+  if (filtros.ordem === "menor") lista = lista.slice().sort((a, b) => (valor(a) || Infinity) - (valor(b) || Infinity));
+  if (filtros.ordem === "maior") lista = lista.slice().sort((a, b) => valor(b) - valor(a));
+  const paginas = Math.max(1, Math.ceil(lista.length / POR_PAGINA));
+  const paginaAtual = Math.min(paginas, Math.max(1, parseInt(req.query.pagina, 10) || 1));
+  res.send(vista.listaPublica({
+    titulo, subtitulo, acao, ativo, filtros, paginas, paginaAtual,
+    total: lista.length,
+    imoveis: lista.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA),
+    opcoes: vista.opcoesDaBusca(todos),
+    social: { url: enderecoDoSite(req) + acao, site: enderecoDoSite(req) },
+  }));
+}
+
 app.get("/alugar", async (req, res, proximo) => {
   try {
-    const todos = await publicados(req.query.q);
-    res.send(vista.listaPublica({
-      titulo: "Imóveis para alugar", subtitulo: "Locação em Caraguatatuba e região",
-      imoveis: todos.filter((i) => /ALUGAR/.test(i.finalidade)), busca: req.query.q, acao: "/alugar",
-      social: { url: enderecoDoSite(req) + "/alugar" },
-    }));
+    await listar(req, res, { finalidade: /ALUGAR/, titulo: "Imóveis para alugar", ativo: "alugar",
+      subtitulo: "Casas e apartamentos para alugar em Caraguatatuba e região.", acao: "/alugar" });
   } catch (erro) { proximo(erro); }
 });
 
 app.get("/comprar", async (req, res, proximo) => {
   try {
-    const todos = await publicados(req.query.q);
-    res.send(vista.listaPublica({
-      titulo: "Imóveis à venda", subtitulo: "Venda em Caraguatatuba e região",
-      imoveis: todos.filter((i) => /VENDER/.test(i.finalidade)), busca: req.query.q, acao: "/comprar",
-      social: { url: enderecoDoSite(req) + "/comprar" },
-    }));
+    await listar(req, res, { finalidade: /VENDER/, titulo: "Imóveis à venda", ativo: "comprar",
+      subtitulo: "Para morar ou investir em Caraguatatuba e região.", acao: "/comprar" });
   } catch (erro) { proximo(erro); }
+});
+
+/** A busca da pagina inicial escolhe Alugar ou Comprar e leva os filtros junto. */
+app.get("/buscar", (req, res) => {
+  const filtros = filtrosDaBusca(req.query);
+  const q = new URLSearchParams();
+  for (const [c, v] of Object.entries(filtros)) if (v) q.set(c, v);
+  const s = q.toString();
+  res.redirect((req.query.f === "comprar" ? "/comprar" : "/alugar") + (s ? "?" + s : ""));
 });
 
 app.get("/imovel/:codigo", async (req, res, proximo) => {
@@ -219,35 +283,27 @@ app.get("/imovel/:codigo", async (req, res, proximo) => {
       [String(req.params.codigo), modelo.NO_AR]);
     if (!rows.length) return res.status(404).send(vista.pagina({
       titulo: "Imóvel não encontrado",
-      corpo: `<section class="faixa"><h1>Imóvel não encontrado</h1>
-        <p>Ele pode ter saído do ar. <a href="/alugar">Ver os disponíveis</a>.</p></section>`,
+      corpo: vista.recado("Imóvel não encontrado", "Ele pode ter saído do ar ou já ter sido alugado.",
+        ["/alugar", "Ver os imóveis disponíveis"]),
     }));
     const imovel = modelo.paraOPublico(rows[0], await fotosDe(rows[0].id));
     const capa = imovel.fotos.find((f) => f.capa) || imovel.fotos[0];
     const site = enderecoDoSite(req);
     res.send(vista.paginaImovel(imovel, {
-      url: site + "/imovel/" + encodeURIComponent(imovel.codigo),
+      url: site + "/imovel/" + encodeURIComponent(imovel.codigo), site,
       imagem: capa ? site + capa.url : "",
     }));
   } catch (erro) { proximo(erro); }
 });
 
 app.get("/anuncie", (req, res) => {
-  res.send(vista.pagina({
-    titulo: "Anuncie seu imóvel",
-    descricao: "Quer alugar ou vender? A Tripac avalia, anuncia e cuida do contrato.",
-    social: { url: enderecoDoSite(req) + "/anuncie" },
-    corpo: `<section class="faixa"><h1>Anuncie seu imóvel</h1>
-      <p>Deixe seus dados: a Tripac entra em contato para avaliar e captar.</p></section>
-      <form class="formulario" method="post" action="/anuncie">
-        <label>Nome<input name="nome" required maxlength="120"></label>
-        <label>Telefone<input name="telefone" required maxlength="40" inputmode="tel"></label>
-        <label>E-mail<input name="email" type="email" maxlength="120"></label>
-        <label>Sobre o imóvel<textarea name="mensagem" maxlength="1000"
-          placeholder="Tipo, bairro, quantos dormitórios, se é para alugar ou vender"></textarea></label>
-        <button class="principal">Enviar</button>
-      </form>`,
-  }));
+  const site = enderecoDoSite(req);
+  res.send(vista.pagina({ ...vista.paginaAnuncie(), social: { url: site + "/anuncie", site } }));
+});
+
+app.get("/privacidade", (req, res) => {
+  const site = enderecoDoSite(req);
+  res.send(vista.pagina({ ...vista.paginaPrivacidade(), social: { url: site + "/privacidade", site } }));
 });
 
 async function guardarContato(req, tipo) {
@@ -258,33 +314,29 @@ async function guardarContato(req, tipo) {
      modelo.texto(req.body.mensagem, 1000)]);
 }
 
+function muitosEnvios(res) {
+  return res.status(429).send(vista.pagina({ titulo: "Muitos envios",
+    corpo: vista.recado("Muitos envios seguidos",
+      "Espere alguns minutos e tente de novo, ou fale com a Tripac pelo WhatsApp.", ["/", "Voltar ao início"]) }));
+}
+
 app.post("/anuncie", async (req, res, proximo) => {
   try {
-    if (!dentroDoLimite("form:" + req.ip, 8, 60)) {
-      return res.status(429).send(vista.pagina({ titulo: "Muitos envios",
-        corpo: `<section class="faixa"><h1>Muitos envios seguidos</h1>
-          <p>Espere alguns minutos e tente de novo, ou fale com a gente pelo
-          WhatsApp.</p></section>` }));
-    }
+    if (!dentroDoLimite("form:" + req.ip, 8, 60)) return muitosEnvios(res);
     await guardarContato(req, "ANUNCIE");
     res.send(vista.pagina({ titulo: "Recebido",
-      corpo: `<section class="faixa"><h1>Recebemos o seu contato</h1>
-        <p>A Tripac retorna em breve. <a href="/">Voltar ao início</a>.</p></section>` }));
+      corpo: vista.recado("Recebemos o seu contato",
+        "A Tripac retorna em breve, no telefone que você deixou.", ["/", "Voltar ao início"]) }));
   } catch (erro) { proximo(erro); }
 });
 
 app.post("/visita", async (req, res, proximo) => {
   try {
-    if (!dentroDoLimite("form:" + req.ip, 8, 60)) {
-      return res.status(429).send(vista.pagina({ titulo: "Muitos envios",
-        corpo: `<section class="faixa"><h1>Muitos envios seguidos</h1>
-          <p>Espere alguns minutos e tente de novo, ou fale com a gente pelo
-          WhatsApp.</p></section>` }));
-    }
+    if (!dentroDoLimite("form:" + req.ip, 8, 60)) return muitosEnvios(res);
     await guardarContato(req, "VISITA");
     res.send(vista.pagina({ titulo: "Pedido enviado",
-      corpo: `<section class="faixa"><h1>Pedido de visita enviado</h1>
-        <p>Entramos em contato para combinar. <a href="/alugar">Ver outros imóveis</a>.</p></section>` }));
+      corpo: vista.recado("Pedido de visita enviado",
+        "A Tripac entra em contato para combinar o dia e o horário.", ["/alugar", "Ver outros imóveis"]) }));
   } catch (erro) { proximo(erro); }
 });
 
@@ -309,7 +361,7 @@ app.get("/sitemap.xml", async (req, res, proximo) => {
       quando ? `<lastmod>${new Date(quando).toISOString().slice(0, 10)}</lastmod>` : ""}</url>`;
     res.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${["/", "/alugar", "/comprar", "/anuncie"].map((c) => url(c)).join("\n")}
+${["/", "/alugar", "/comprar", "/anuncie", "/privacidade"].map((c) => url(c)).join("\n")}
 ${rows.map((r) => url("/imovel/" + encodeURIComponent(r.codigo || r.id), r.atualizado_em)).join("\n")}
 </urlset>
 `);
@@ -592,9 +644,8 @@ app.get("/interna/contatos", async (req, res, proximo) => {
 
 /* ------------------------------------------------ erros e subida */
 app.use((req, res) => res.status(404).send(vista.pagina({
-  titulo: "Página não encontrada",
-  corpo: `<section class="faixa"><h1>Página não encontrada</h1>
-    <p><a href="/">Voltar ao início</a></p></section>`,
+  titulo: "Página não encontrada", interna: req.path.startsWith("/interna"),
+  corpo: vista.recado("Página não encontrada", "O endereço pode ter mudado.", ["/", "Voltar ao início"]),
 })));
 
 app.use((erro, req, res, proximo) => {
@@ -604,8 +655,8 @@ app.use((erro, req, res, proximo) => {
     return res.status(codigo).json({ erro: codigo === 400 ? erro.message : "falha no servidor" });
   }
   res.status(codigo).send(vista.pagina({
-    titulo: "Erro", corpo: `<section class="faixa"><h1>Algo deu errado</h1>
-      <p>Tente de novo. Se continuar, avise a Tripac.</p></section>`,
+    titulo: "Erro", interna: req.path.startsWith("/interna"),
+    corpo: vista.recado("Algo deu errado", "Tente de novo. Se continuar, avise a Tripac.", ["/", "Voltar ao início"]),
   }));
 });
 
