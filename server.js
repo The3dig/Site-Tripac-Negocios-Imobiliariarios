@@ -15,6 +15,7 @@ const LojaPg = require("connect-pg-simple")(sessao);
 const multer = require("multer");
 
 const { pool, preparar } = require("./lib/db");
+const { copiarDoRender } = require("./lib/copiar");
 const auth = require("./lib/auth");
 const modelo = require("./lib/modelo");
 const vista = require("./lib/html");
@@ -1006,6 +1007,11 @@ app.use((erro, req, res, proximo) => {
 const porta = process.env.PORT || 3000;
 preparar()
   .then(async () => {
+    // Antes da semente: o administrador que vier na copia e o de verdade.
+    const copia = await copiarDoRender();
+    if (copia) console.log(copia.copiado
+      ? "BANCO COPIADO do Render para o banco novo: " + JSON.stringify(copia.contagens) + " - pode apagar COPIAR_DO_RENDER"
+      : "COPIAR_DO_RENDER: " + copia.motivo);
     const semeado = await auth.semearAdministrador();
     if (semeado.criado) console.log("administrador criado a partir de ADMIN_EMAIL");
     if (semeado.redefinido) console.log("senha do administrador REDEFINIDA pelo painel - apague ADMIN_REDEFINIR e ADMIN_SENHA");

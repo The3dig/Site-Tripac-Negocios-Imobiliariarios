@@ -1,5 +1,9 @@
 # O banco definitivo: as opções, o que cada uma custa e o que muda no código
 
+> **Decidido em 23/10/2026: Neon, plano gratuito.** O Rone autorizou a
+> migração ("já faz a migração pra Neon antes que a gente perca acesso"). O
+> caminho é o da seção **"Como foi feita a troca para o Neon"**, no fim.
+
 > **Nada foi migrado.** Este documento existe para você escolher. A migração só
 > acontece com a sua autorização, e o caminho está no fim.
 
@@ -117,3 +121,31 @@ Não é o que se quer.
 - Não apago, não recrio e não zero nenhuma tabela de produção para resolver
   incompatibilidade.
 - Não escolho plano pago no seu cartão.
+
+
+## Como foi feita a troca para o Neon (23/10/2026)
+
+Sem `pg_dump` no computador de ninguém: o próprio site copia, na subida.
+
+1. No Neon: projeto `tripac`, região **AWS US West (Oregon)** (perto do serviço
+   do Render). Copiar a *connection string* (`postgresql://...sslmode=require`).
+2. No Render, serviço `site-tripac` → *Environment*, **acrescentar** duas
+   variáveis — o `DATABASE_URL` **não se mexe**:
+   - `BANCO_URL` = a connection string do Neon;
+   - `COPIAR_DO_RENDER` = `sim`.
+3. Salvar. Na subida, o site (`lib/copiar.js`) lê o banco antigo
+   (`DATABASE_URL`), copia usuários, imóveis, fotos, contatos e auditoria para
+   o novo (`BANCO_URL`) numa transação só, confere contagens e md5 das fotos e
+   escreve no log: `BANCO COPIADO do Render para o banco novo: {...}`.
+4. Entrar na área interna e conferir. Depois, **apagar `COPIAR_DO_RENDER`**.
+
+Por que `BANCO_URL` e não trocar o `DATABASE_URL`: o `render.yaml` prende o
+`DATABASE_URL` ao banco do Render, e uma sincronização do Blueprint poderia
+devolvê-lo ao banco antigo, que o Render apaga.
+
+Regras da cópia: o antigo só é lido; o novo só recebe se estiver vazio; o que
+não bater desfaz tudo. Ensaiada contra dois bancos locais: 7 usuários, 10
+imóveis, 15 fotos (md5 igual), 2 contatos e 48 registros chegaram; o antigo
+ficou igual; login, site e cadastros novos funcionaram em cima da cópia; a
+segunda subida não copia de novo; com o banco antigo já apagado, o site sobe
+assim mesmo.
